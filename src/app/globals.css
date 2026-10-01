@@ -1,0 +1,191 @@
+@import "tailwindcss";
+
+/* ── Plus Jakarta Sans ── */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500&display=swap");
+}
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500&display=swap");
+}
+
+/* ── Design tokens as CSS custom properties ── */
+:root {
+  /* Background */
+  --app-bg: #faf7f8;
+  --surface: #ffffff;
+  --surface-border: #e6dee2;
+
+  /* Text */
+  --ink: #1f1a24;
+  --ink-muted: #6b6270;
+
+  /* Brand */
+  --brand-rose: #b3295b;
+  --blush: #f8e8ee;
+  --blush-border: #ebcfd9;
+
+  /* Teal */
+  --teal: #0f8b94;
+  --teal-soft: #e3f4f5;
+  --teal-dark: #0a5a61;
+
+  /* Amber */
+  --amber: #f5b731;
+  --amber-soft: #fff6dc;
+  --amber-border: #ebcb78;
+
+  /* Sage */
+  --sage: #2f8f5b;
+  --sage-soft: #e4f3ea;
+  --sage-text: #1e6b42;
+
+  /* Step inactive */
+  --step-inactive: #e0cfd6;
+
+  /* Font */
+  --font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+
+  /* ── z-index scale ──
+     content:      0
+     sticky-bars: 10
+     bottom-nav:  20
+     scrim:       40
+     sheets:      50
+     toasts:      60
+     launch:      70
+  */
+}
+
+/*
+ * Tailwind v4 @theme inline — ONLY adds new color aliases.
+ * Does NOT touch spacing, sizing, radius, or any other default namespace
+ * so that p-4, gap-3, w-full, rounded-[14px] etc. all keep working.
+ */
+@theme inline {
+  --color-app-bg: var(--app-bg);
+  --color-surface: var(--surface);
+  --color-surface-border: var(--surface-border);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-brand-rose: var(--brand-rose);
+  --color-blush: var(--blush);
+  --color-blush-border: var(--blush-border);
+  --color-teal: var(--teal);
+  --color-teal-soft: var(--teal-soft);
+  --color-teal-dark: var(--teal-dark);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-amber-border: var(--amber-border);
+  --color-sage: var(--sage);
+  --color-sage-soft: var(--sage-soft);
+  --color-sage-text: var(--sage-text);
+  --color-step-inactive: var(--step-inactive);
+  --font-sans: var(--font-family);
+}
+
+/* ── Base styles ── */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  font-family: var(--font-family);
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--ink);
+  font-family: var(--font-family);
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100dvh;
+}
+
+/* ── Mobile touch globals ── */
+button, a, [role="button"], [role="checkbox"], label, summary, select, input, textarea {
+  touch-action: manipulation;   /* no 300ms delay, no double-tap zoom */
+}
+
+input, textarea, select {
+  font-size: 16px;  /* stops iOS zooming on focus */
+}
+
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+[data-pressable] {
+  transition: transform 80ms ease-out, background-color 80ms;
+}
+[data-pressable]:active {
+  transform: scale(0.97);
+}
+
+/* Hairline border utility */
+.border-hairline {
+  border-width: 0.5px;
+}
+
+/* Hide scrollbars but allow scrolling */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* Button reset */
+button {
+  font-family: var(--font-family);
+  cursor: pointer;
+}
+
+/* Input reset */
+input,
+select,
+textarea {
+  font-family: var(--font-family);
+}
+
+/* ── Home header wash: eased brand rose → app bg ── */
+.home-wash {
+  --brand: var(--brand-rose);
+  --bg: var(--app-bg);
+  padding-bottom: 56px;
+  background: linear-gradient(180deg,
+    var(--brand) 0,
+    var(--brand) calc(100% - 56px),
+    color-mix(in srgb, var(--brand) 95.7%, var(--bg)) calc(100% - 49px),
+    color-mix(in srgb, var(--brand) 84.4%, var(--bg)) calc(100% - 42px),
+    color-mix(in srgb, var(--brand) 68.4%, var(--bg)) calc(100% - 35px),
+    color-mix(in srgb, var(--brand) 50%, var(--bg)) calc(100% - 28px),
+    color-mix(in srgb, var(--brand) 31.6%, var(--bg)) calc(100% - 21px),
+    color-mix(in srgb, var(--brand) 15.6%, var(--bg)) calc(100% - 14px),
+    color-mix(in srgb, var(--brand) 4.3%, var(--bg)) calc(100% - 7px),
+    var(--bg) 100%
+  );
+}
+
+/* ── Capsule nav ── */
+@media (prefers-reduced-motion: reduce) {
+  .capsule-glass,
+  .capsule-highlight {
+    transition: none !important;
+  }
+}
+
+/* ── PWA standalone mode ── */
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: none;
+  }
+}
