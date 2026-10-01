@@ -8,8 +8,6 @@ import { IconHome, IconClipboardList, IconHelpCircle, IconUser } from "./icons";
 const navItems = [
   { href: "/", label: "Home", icon: IconHome },
   { href: "/orders", label: "Orders", icon: IconClipboardList },
-  { href: "/help", label: "Help", icon: IconHelpCircle },
-  { href: "/profile", label: "Profile", icon: IconUser },
 ];
 
 function getActiveIndex(pathname: string): number {
@@ -168,7 +166,7 @@ export default function BottomNav() {
     >
       <div
         ref={capsuleRef}
-        className="relative w-full overflow-hidden rounded-[32px] pointer-events-auto"
+        className="relative w-full overflow-hidden rounded-[20px] pointer-events-auto"
         style={{ touchAction: "pan-y" }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -177,9 +175,9 @@ export default function BottomNav() {
       >
         {/* Glass layer — decorative, no pointer events */}
         <div
-          className="capsule-glass absolute inset-0 rounded-[32px] pointer-events-none"
+          className="capsule-glass absolute inset-0 rounded-[20px] pointer-events-none"
           style={{
-            background: "rgba(255, 255, 255, 0.82)",
+            background: "rgba(255, 255, 255, 0.4)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
             border: "0.5px solid var(--surface-border)",
@@ -193,8 +191,8 @@ export default function BottomNav() {
           style={{
             top: "4px",
             bottom: "4px",
-            background: "#F3F4F6",
-            border: "1px solid #E5E7EB",
+            background: "rgba(255, 228, 238, 0.2)",
+            border: "1px solid rgba(255, 190, 210, 0.3)",
             borderRadius: "16px",
             willChange: "left, width",
           }}
@@ -215,6 +213,8 @@ export default function BottomNav() {
                 onClick={(e) => {
                   if (isDraggingRef.current) {
                     e.preventDefault();
+                  } else {
+                    moveHighlightTo(idx, true);
                   }
                 }}
                 className="group flex-1 flex flex-col items-center justify-center gap-1 min-h-[56px] min-w-[64px] relative z-10 no-underline outline-none focus-visible:ring-2 focus-visible:ring-brand-rose focus-visible:ring-offset-2 rounded-[20px] no-select"
@@ -223,8 +223,8 @@ export default function BottomNav() {
                   fontWeight: isActive ? 600 : 500,
                 }}
               >
-                <div className={`transition-transform duration-200 ${isActive ? "scale-[1.15]" : "group-hover:scale-110"}`}>
-                  <Icon size={24} strokeWidth={1.25} />
+                <div className={`transition-transform duration-200 ${isActive ? "scale-[1.15]" : "scale-100"} group-hover:scale-125`}>
+                  <Icon size={28} strokeWidth={1.25} />
                 </div>
                 <span className="text-[11px] leading-none" style={{ fontWeight: "inherit" }}>
                   {item.label}

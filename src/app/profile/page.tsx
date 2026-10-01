@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import AppShell from "@/components/app-shell";
 import BottomNav from "@/components/bottom-nav";
 import { PageTitle, Card, ListCard, ListCardRow } from "@/components/ui";
@@ -13,10 +14,13 @@ import {
   IconLogout,
   IconChevronRight,
   IconBolt,
+  IconBell,
+  IconHelpCircle,
 } from "@/components/icons";
 import { demoUser, demoAddress } from "@/lib/mock-data";
 
 export default function ProfilePage() {
+  const router = useRouter();
   const [language, setLanguage] = useState<"en" | "hi">("en");
   const [isStandaloneMode, setIsStandaloneMode] = useState(true); // default true to avoid flash
 
@@ -87,6 +91,30 @@ export default function ProfilePage() {
                 </p>
                 <p className="text-[12px]" style={{ color: "#6B6270" }}>
                   UPI, cards
+                </p>
+              </div>
+              <IconChevronRight size={16} className="text-ink-muted shrink-0" />
+            </ListCardRow>
+          </ListCard>
+        </div>
+
+        {/* Support & Notifications */}
+        <div className="mt-3">
+          <ListCard>
+            <ListCardRow onClick={() => {}}>
+              <IconBell size={20} className="text-teal shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-medium" style={{ color: "#1F1A24" }}>
+                  Notifications
+                </p>
+              </div>
+              <IconChevronRight size={16} className="text-ink-muted shrink-0" />
+            </ListCardRow>
+            <ListCardRow last onClick={() => router.push("/help")}>
+              <IconHelpCircle size={20} className="text-teal shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-medium" style={{ color: "#1F1A24" }}>
+                  Help & Support
                 </p>
               </div>
               <IconChevronRight size={16} className="text-ink-muted shrink-0" />

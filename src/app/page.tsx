@@ -13,7 +13,9 @@ import {
   IconCurrencyRupee,
   IconLock,
   IconBolt,
+  IconUser,
 } from "@/components/icons";
+import Link from "next/link";
 import { allServices } from "@/data/services";
 
 const trustItems = [
@@ -36,17 +38,16 @@ export default function HomePage() {
                 in 10 minutes
               </span>
             </div>
-            <button
-              className="relative w-9 h-9 flex items-center justify-center rounded-full bg-white shadow-sm no-select"
-              aria-label="Notifications"
-              data-pressable=""
-            >
-              <IconBell size={18} className="text-ink" />
-              <span
-                className="absolute top-1 right-1 w-[7px] h-[7px] rounded-full"
-                style={{ backgroundColor: "#B3295B" }}
-              />
-            </button>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/profile"
+                className="relative w-9 h-9 flex items-center justify-center rounded-full bg-white shadow-sm no-select"
+                aria-label="Profile"
+                data-pressable=""
+              >
+                <IconUser size={18} className="text-ink" />
+              </Link>
+            </div>
           </div>
 
           {/* Location trigger — opens address bottom sheet */}

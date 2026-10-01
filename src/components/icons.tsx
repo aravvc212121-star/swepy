@@ -43,9 +43,20 @@ function makeIcon(paths: string, name: string) {
 }
 
 // Navigation
-export const IconHome = makeIcon(
-  '<path d="M5 12l-2 0l9 -9l9 9l-2 0" /><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" /><path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />',
-  "IconHome"
+export const IconHome = ({ size = 24, className, style }: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    stroke="none"
+    className={className}
+    style={style}
+    aria-hidden="true"
+  >
+    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
+  </svg>
 );
 
 export const IconClipboardList = makeIcon(
