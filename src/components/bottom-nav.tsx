@@ -3,15 +3,19 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { IconHome, IconClipboardList, IconHelpCircle, IconUser } from "./icons";
+import { IconHome, IconClipboardList, IconNavigation, IconClock } from "./icons";
 
 const navItems = [
   { href: "/", label: "Home", icon: IconHome },
-  { href: "/orders", label: "Orders", icon: IconClipboardList },
+  { href: "/activity", label: "Activity", icon: IconClock },
+  { href: "/orders", label: "Booking", icon: IconClipboardList },
+  { href: "/booking/demo", label: "Tracking", icon: IconNavigation },
 ];
 
 function getActiveIndex(pathname: string): number {
   if (pathname === "/") return 0;
+  if (pathname.startsWith("/booking")) return 2; // Tracking tab active for any /booking/[id] route
+  if (pathname.startsWith("/orders")) return 1;
   const idx = navItems.findIndex((item) => item.href !== "/" && pathname.startsWith(item.href));
   return idx >= 0 ? idx : -1;
 }
@@ -224,7 +228,7 @@ export default function BottomNav() {
                 }}
               >
                 <div className={`transition-transform duration-200 ${isActive ? "scale-[1.15]" : "scale-100"} group-hover:scale-125`}>
-                  <Icon size={28} strokeWidth={1.25} />
+                  <Icon size={32} strokeWidth={1.25} />
                 </div>
                 <span className="text-[11px] leading-none" style={{ fontWeight: "inherit" }}>
                   {item.label}
