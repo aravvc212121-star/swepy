@@ -4,13 +4,13 @@ import type { RealtimeEvent } from "./types";
 export function createPollingTransport(): SwepyTransport {
   const listeners = new Set<(e: RealtimeEvent) => void>();
   let intervalId: ReturnType<typeof setInterval> | null = null;
-  let lastSync: number | null = null;
+  let lastSync: string | null = null;
 
   function startPolling() {
     if (intervalId) return;
     intervalId = setInterval(async () => {
       try {
-        const url = lastSync ? `/api/messages?since=${lastSync}` : `/api/messages`;
+        const url = lastSync ? `/api/messages?since=${encodeURIComponent(lastSync)}` : `/api/messages`;
         const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
@@ -20,9 +20,9 @@ export function createPollingTransport(): SwepyTransport {
           });
         }
         if (data.nextSince) {
-          lastSync = Number(data.nextSince);
+          lastSync = data.nextSince;
         } else if (data.events && data.events.length > 0) {
-          lastSync = Date.now(); // fallback
+          lastSync = new Date().toISOString(); // fallback
         }
       } catch (err) {
         // ignore network errors in polling

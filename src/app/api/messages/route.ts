@@ -20,24 +20,24 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    const sinceParam = url.searchParams.get('since');
-    const since = sinceParam && sinceParam !== 'null' && sinceParam !== 'undefined' ? sinceParam : null;
+    const since = url.searchParams.get('since');
+    const sinceDecoded = since && since !== 'null' && since !== 'undefined' ? decodeURIComponent(since) : null;
     
-    const timeRes = await sql`SELECT (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint as t`;
-    const serverNow = timeRes[0].t;
+    // Get server time as ISO string
+    const timeRes = await sql`SELECT NOW() as t`;
+    const serverNow = timeRes[0].t.toISOString();
     
     let rows;
-    if (since) {
-      const sinceDate = new Date(Number(since));
+    if (sinceDecoded) {
       rows = await sql`
-        SELECT payload, (EXTRACT(EPOCH FROM created_at) * 1000)::bigint as ts 
+        SELECT payload, created_at as ts 
         FROM demo_messages 
-        WHERE created_at > ${sinceDate}
+        WHERE created_at > ${sinceDecoded}
         ORDER BY created_at ASC
       `;
     } else {
       rows = await sql`
-        SELECT payload, (EXTRACT(EPOCH FROM created_at) * 1000)::bigint as ts 
+        SELECT payload, created_at as ts 
         FROM demo_messages 
         WHERE created_at > NOW() - INTERVAL '30 seconds'
         ORDER BY created_at ASC
@@ -46,15 +46,16 @@ export async function GET(req: NextRequest) {
 
     let nextSince = serverNow;
     if (rows.length > 0) {
-      const lastRowTs = rows[rows.length - 1].ts;
-      if (lastRowTs >= serverNow) {
-        nextSince = lastRowTs;
-      }
+      // Use the timestamp of the last (newest) row as ISO string
+      nextSince = rows[rows.length - 1].ts.toISOString();
+    } else {
+      // If no new rows, keep the requested since
+      nextSince = sinceDecoded ? sinceDecoded : serverNow;
     }
 
     return NextResponse.json({ 
       events: rows.map(r => r.payload),
-      nextSince: String(nextSince)
+      nextSince: nextSince
     });
   } catch (err: any) {
     console.error("GET /api/messages error:", err);
