@@ -4,33 +4,33 @@ export const footerConfig = {
   tagline: "Helper at your door in 10 minutes",
   linkGroups: [
     {
-      title: "Support",
+      titleKey: "footer.support",
       links: [
-        { label: "Contact us", href: "/contact" },
-        { label: "FAQs", href: "/faqs" },
-        { label: "Delete account", href: "/delete-account" },
+        { labelKey: "footer.contactUs", href: "/contact" },
+        { labelKey: "footer.faqs", href: "/faqs" },
+        { labelKey: "footer.deleteAccount", href: "/delete-account" },
       ],
     },
     {
-      title: "Company",
+      titleKey: "footer.company",
       links: [
-        { label: "About us", href: "/about" },
-        { label: "Become a helper", href: "/careers" },
-        { label: "Request Swepy in your area", href: "/request-area" },
+        { labelKey: "footer.aboutUs", href: "/about" },
+        { labelKey: "footer.becomeHelper", href: "/helper/onboarding/1" },
+        { labelKey: "footer.requestArea", href: "/request-area" },
       ],
     },
     {
-      title: "Legal",
+      titleKey: "footer.legal",
       links: [
-        { label: "Terms and conditions", href: "/terms" },
-        { label: "Privacy policy", href: "/privacy" },
-        { label: "Refund policy", href: "/refund" },
+        { labelKey: "footer.terms", href: "/terms" },
+        { labelKey: "footer.privacy", href: "/privacy" },
+        { labelKey: "footer.refund", href: "/refund" },
       ],
     },
     {
-      title: "Get the app",
+      titleKey: "footer.getApp",
       links: [
-        { label: "Install Swepy", href: "#install" },
+        { labelKey: "footer.installSwepy", href: "#install" },
       ],
     },
   ],

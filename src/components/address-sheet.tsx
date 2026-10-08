@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useAddressStore, type Address } from "@/lib/address-store";
+import { useGeo } from "@/lib/geo-store";
 import {
   IconX,
   IconSearch,
@@ -12,6 +13,7 @@ import {
   IconCheck,
 } from "@/components/icons";
 import { useDragToDismiss } from "@/lib/use-drag-to-dismiss";
+import AddAddressSheet from "@/components/add-address-sheet";
 
 /* ── tiny helpers ── */
 const IconBriefcase = ({ size = 24, className, style }: { size?: number; className?: string; style?: React.CSSProperties }) => (
@@ -47,15 +49,15 @@ function getTypeIcon(type: Address["type"]) {
 
 /* ── css vars ── */
 const sheetVars = {
-  "--sheet-bg": "#B3225A",
-  "--box": "#FFF1F6",
-  "--ink": "#3B1428",
-  "--sub": "#6E4A5C",
-  "--div": "#F6D9E5",
-  "--ico-bg": "#F9D6E4",
-  "--ico-fg": "#A01E52",
-  "--pill-bg": "#D6F0E8",
-  "--pill-fg": "#0B6150",
+  "--sheet-bg": "#FFF5F8",
+  "--box": "#FFFFFF",
+  "--ink": "#1F1A24",
+  "--sub": "#6B6270",
+  "--div": "#EFE0E6",
+  "--ico-bg": "#FCE8F0",
+  "--ico-fg": "#B3225A",
+  "--pill-bg": "#FCE8F0",
+  "--pill-fg": "#8F1F45",
 } as React.CSSProperties;
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -159,30 +161,23 @@ function QuickActions({
   onUseCurrentLocation: () => void;
   onAddNew: () => void;
 }) {
-  const [geoStatus, setGeoStatus] = useState<string | null>(null);
+  const geo = useGeo();
 
   const handleGeo = useCallback(() => {
-    if (!navigator.geolocation) {
-      setGeoStatus("Geolocation not supported by your browser");
-      return;
-    }
-    setGeoStatus("Locating…");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        // TODO: reverse-geocode pos.coords.latitude, pos.coords.longitude
-        setGeoStatus(`Located: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`);
-        onUseCurrentLocation();
-      },
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          setGeoStatus("Location permission denied. Enable it in browser settings.");
-        } else {
-          setGeoStatus("Unable to get your location. Please try again.");
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  }, [onUseCurrentLocation]);
+    geo.requestLocation();
+    onUseCurrentLocation();
+  }, [geo, onUseCurrentLocation]);
+
+  const statusText =
+    geo.status === "requesting"
+      ? "Locating…"
+      : geo.status === "granted" && geo.address
+      ? geo.address
+      : geo.status === "denied"
+      ? "Location denied. Enable in browser settings."
+      : geo.status === "error"
+      ? "Unable to get location. Try again."
+      : "Turn on GPS for accurate delivery";
 
   return (
     <div className="rounded-[12px] overflow-hidden mt-3" style={{ backgroundColor: "var(--box)" }}>
@@ -197,10 +192,10 @@ function QuickActions({
         <IconCurrentLocation size={20} style={{ color: "var(--ico-fg)" }} />
         <div className="flex-1 min-w-0">
           <span className="text-[14px] font-medium" style={{ color: "var(--ico-fg)" }}>
-            Use current location
+            {geo.status === "granted" ? "Location enabled" : "Use current location"}
           </span>
-          <p className="text-[12px]" style={{ color: geoStatus ? "var(--ico-fg)" : "var(--sub)" }}>
-            {geoStatus || "Turn on GPS for accurate delivery"}
+          <p className="text-[12px]" style={{ color: geo.status !== "idle" ? "var(--ico-fg)" : "var(--sub)" }}>
+            {statusText}
           </p>
         </div>
       </button>
@@ -241,6 +236,7 @@ export default function AddressSheet({
   const scrimRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
   const historyPushed = useRef(false);
 
   // Lock body scroll when open
@@ -331,8 +327,7 @@ export default function AddressSheet({
   }, [deleteAddress]);
 
   const handleAddNew = useCallback(() => {
-    // TODO: navigate to add-address flow
-    alert("Add new address flow (placeholder)");
+    setAddSheetOpen(true);
   }, []);
 
   const handleUseCurrentLocation = useCallback(() => {
@@ -411,14 +406,14 @@ export default function AddressSheet({
               style={{
                 width: 36,
                 height: 4,
-                backgroundColor: "rgba(255,255,255,0.45)",
+                backgroundColor: "rgba(179, 34, 90, 0.2)",
               }}
             />
           </div>
 
           {/* Header */}
           <div className="flex items-center justify-between px-4 mb-3">
-            <h2 className="text-[16px] font-medium text-white">
+            <h2 className="text-[16px] font-medium" style={{ color: "var(--ink)" }}>
               Select delivery location
             </h2>
             <button
@@ -470,7 +465,7 @@ export default function AddressSheet({
             <>
               <p
                 className="text-[12px] font-medium mt-4 mb-2"
-                style={{ color: "#FBE3EC" }}
+                style={{ color: "var(--sub)" }}
               >
                 Current address
               </p>
@@ -487,7 +482,7 @@ export default function AddressSheet({
             <>
               <p
                 className="text-[12px] font-medium mt-4 mb-2"
-                style={{ color: "#FBE3EC" }}
+                style={{ color: "var(--sub)" }}
               >
                 Alternate addresses
               </p>
@@ -538,7 +533,7 @@ export default function AddressSheet({
           {/* Empty state */}
           {addresses.length === 0 && (
             <div className="mt-6 text-center">
-              <p className="text-[14px] font-medium text-white mb-3">
+              <p className="text-[14px] font-medium mb-3" style={{ color: "var(--ink)" }}>
                 No saved addresses yet
               </p>
               <button
@@ -571,6 +566,9 @@ export default function AddressSheet({
           to { opacity: 1; }
         }
       `}</style>
+
+      {/* Nested Add Address Sheet */}
+      <AddAddressSheet open={addSheetOpen} onClose={() => setAddSheetOpen(false)} />
     </div>
   );
 }

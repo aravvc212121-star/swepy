@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Poppins } from "next/font/google";
 import { footerConfig } from "@/data/footer";
-import { allServices } from "@/data/services";
 import { IconBrandInstagram, IconBrandLinkedin, IconBrandYoutube } from "@/components/icons";
+import { useI18n } from "@/lib/i18n";
 
 const poppins = Poppins({ subsets: ["latin"], weight: ["600"] });
 
@@ -32,7 +32,7 @@ function FooterLinkGroup({ title, links }: { title: string, links: { label: stri
             <Link 
               href={link.href}
               className="block text-[13px] py-1.5 no-underline outline-none focus-visible:ring-2 focus-visible:ring-[#F6B21A] focus-visible:ring-offset-2 focus-visible:text-white focus-visible:underline pr-2 flex items-center"
-              style={{ color: "#FBE3EC", lineHeight: 1.4 }}
+              style={{ color: "var(--footer-text)", lineHeight: 1.4 }}
             >
               {link.label}
             </Link>
@@ -79,6 +79,7 @@ function SocialLinks({ items }: { items: typeof footerConfig.social }) {
 export default function Footer() {
   const currentYear = new Date().getFullYear();
   const [isStandalone, setIsStandalone] = useState(false);
+  const { t } = useI18n();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -86,11 +87,21 @@ export default function Footer() {
     }
   }, []);
 
+  const renderGroup = (group: typeof footerConfig.linkGroups[0]) => (
+    <FooterLinkGroup
+      title={t(group.titleKey as any)}
+      links={group.links.map(link => ({
+        label: t(link.labelKey as any),
+        href: link.href
+      }))}
+    />
+  );
+
   return (
     <footer 
       className="rounded-t-[20px] px-5 pt-7 w-full mx-auto"
       style={{ 
-        backgroundColor: "#B3225A", 
+        backgroundColor: "var(--footer-bg)", 
         paddingBottom: "calc(20px + env(safe-area-inset-bottom, 8px) + 96px)" // base + nav bar height
       }}
     >
@@ -98,16 +109,14 @@ export default function Footer() {
       
       {/* Support | Company */}
       <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-6">
-        <FooterLinkGroup title={footerConfig.linkGroups[0].title} links={footerConfig.linkGroups[0].links} />
-        <FooterLinkGroup title={footerConfig.linkGroups[1].title} links={footerConfig.linkGroups[1].links} />
+        {renderGroup(footerConfig.linkGroups[0])}
+        {renderGroup(footerConfig.linkGroups[1])}
       </div>
 
       {/* Legal | Get the app */}
       <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-6">
-        <FooterLinkGroup title={footerConfig.linkGroups[2].title} links={footerConfig.linkGroups[2].links} />
-        {!isStandalone && (
-          <FooterLinkGroup title={footerConfig.linkGroups[3].title} links={footerConfig.linkGroups[3].links} />
-        )}
+        {renderGroup(footerConfig.linkGroups[2])}
+        {!isStandalone && renderGroup(footerConfig.linkGroups[3])}
       </div>
 
       {/* Divider */}
@@ -116,7 +125,7 @@ export default function Footer() {
       {/* Social & Copyright */}
       <SocialLinks items={footerConfig.social} />
       
-      <p className="mt-4 text-[12px] m-0" style={{ color: "#F8C9DA" }}>
+      <p className="mt-4 text-[12px] m-0" style={{ color: "var(--footer-copyright)" }}>
         Swepy © {currentYear}
       </p>
     </footer>

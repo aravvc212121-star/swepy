@@ -33,10 +33,10 @@
   --blush: #f8e8ee;
   --blush-border: #ebcfd9;
 
-  /* Teal */
-  --teal: #0f8b94;
-  --teal-soft: #e3f4f5;
-  --teal-dark: #0a5a61;
+  /* Pink (formerly teal) */
+  --teal: #d4638a;
+  --teal-soft: #fce8f0;
+  --teal-dark: #8f1f45;
 
   /* Amber */
   --amber: #f5b731;
@@ -51,6 +51,20 @@
   /* Step inactive */
   --step-inactive: #e0cfd6;
 
+  /* Card/sheet fills */
+  --card-fill: #ffffff;
+  --sheet-bg: #ffffff;
+
+  /* Footer */
+  --footer-bg: #B3225A;
+  --footer-text: #FBE3EC;
+  --footer-copyright: #F8C9DA;
+
+  /* Nav capsule */
+  --nav-glass: rgba(255, 255, 255, 0.55);
+  --nav-text: #6B7280;
+  --nav-text-active: #1F2937;
+
   /* Font */
   --font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
 
@@ -63,6 +77,55 @@
      toasts:      60
      launch:      70
   */
+}
+
+/* ── Dark mode tokens ── */
+:root.dark {
+  /* Background */
+  --app-bg: #000000;
+  --surface: #1c1c1e;
+  --surface-border: #2c2c2e;
+
+  /* Text */
+  --ink: #f2eef0;
+  --ink-muted: #9e929a;
+
+  /* Brand — keep original pink wash */
+  --brand-rose: #b3295b;
+  --blush: #1c1c1e;
+  --blush-border: #2c2c2e;
+
+  /* Pink accent */
+  --teal: #e07da0;
+  --teal-soft: #2c2c2e;
+  --teal-dark: #f0a0bc;
+
+  /* Amber */
+  --amber: #f5c04a;
+  --amber-soft: #2a2416;
+  --amber-border: #4d3d1e;
+
+  /* Sage */
+  --sage: #4aba7a;
+  --sage-soft: #162318;
+  --sage-text: #6fd89a;
+
+  /* Step inactive */
+  --step-inactive: #352d38;
+
+  /* Card/sheet fills */
+  --card-fill: #1c1c1e;
+  --sheet-bg: #1c1c1e;
+
+  /* Footer — keep original pink */
+  --footer-bg: #B3225A;
+  --footer-text: #FBE3EC;
+  --footer-copyright: #F8C9DA;
+
+  /* Nav capsule */
+  --nav-glass: rgba(54, 50, 52, 0.25);
+  --nav-text: rgba(255, 255, 255, 0.55);
+  --nav-text-active: #ffffff;
 }
 
 /*
@@ -108,6 +171,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100dvh;
+  transition: background-color 200ms ease, color 200ms ease;
 }
 
 /* ── Mobile touch globals ── */
@@ -175,6 +239,14 @@ textarea {
   );
 }
 
+.dark .home-wash {
+  background: var(--brand-rose);
+  padding-bottom: 24px;
+  border-bottom-left-radius: 24px;
+  border-bottom-right-radius: 24px;
+  margin-bottom: 16px;
+}
+
 /* ── Capsule nav ── */
 @media (prefers-reduced-motion: reduce) {
   .capsule-glass,
@@ -189,3 +261,24 @@ textarea {
     overscroll-behavior-y: none;
   }
 }
+
+/* ── Dark-mode transition helper ── */
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none !important;
+  }
+}
+
+/* ── Nav icon pop animation ── */
+@keyframes navIconPop {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.4); }
+  55%  { transform: scale(0.88); }
+  75%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.nav-icon-pop {
+  animation: navIconPop 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+}
+

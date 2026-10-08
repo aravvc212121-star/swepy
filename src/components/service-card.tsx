@@ -72,13 +72,13 @@ export default function ServiceCard({
   const isHero = variant === "hero";
   
   // Hero variant uses glass styling to blend with the pink wash
-  const cardBg = isHero ? "rgba(255,255,255,0.18)" : "#FFFFFF";
-  const cardBorder = isHero ? "rgba(255,255,255,0.25)" : "#E6DEE2";
-  const textColor = isHero ? "#FFFFFF" : "#1F1A24";
-  const subtextColor = isHero ? "rgba(255,255,255,0.75)" : "#6B6270";
+  const cardBg = isHero ? "rgba(255,255,255,0.18)" : "var(--blush)";
+  const cardBorder = isHero ? "rgba(255,255,255,0.25)" : "var(--blush-border)";
+  const textColor = isHero ? "#FFFFFF" : "var(--ink)";
+  const subtextColor = isHero ? "rgba(255,255,255,0.75)" : "var(--ink-muted)";
   
   const tileHeight = isHero ? "h-20" : "h-24";
-  const tileBg = isHero ? "rgba(255,255,255,0.25)" : "#FAF7F8";
+  const tileBg = isHero ? "rgba(255,255,255,0.25)" : "var(--teal-soft)";
 
   return (
     <Link

@@ -153,6 +153,34 @@ export const demoBooking: Booking = {
 // ── Demo orders ──
 export const demoOrders: Order[] = [
   {
+    id: "ord_003",
+    booking: {
+      ...demoBooking,
+      id: "bk_20261005_ongoing",
+      state: "in_progress",
+      helper: demoHelpers[0],
+      eta_minutes: 0,
+      created_at: "2026-10-05T08:00:00+05:30",
+    },
+    completed_at: null,
+    rated: false,
+  },
+  {
+    id: "ord_004",
+    booking: {
+      ...demoBooking,
+      id: "bk_20261006_scheduled",
+      state: "assigned",
+      instant: false,
+      scheduled_for: "2026-10-06T10:00:00+05:30",
+      helper: demoHelpers[2],
+      eta_minutes: 0,
+      created_at: "2026-10-05T09:00:00+05:30",
+    },
+    completed_at: null,
+    rated: false,
+  },
+  {
     id: "ord_001",
     booking: {
       ...demoBooking,
@@ -194,6 +222,7 @@ export const demoOrders: Order[] = [
     rated: true,
   },
 ];
+
 
 // ── FAQ data ──
 export const faqData = [

@@ -17,14 +17,17 @@ import {
 } from "@/components/icons";
 import Link from "next/link";
 import { allServices } from "@/data/services";
-
-const trustItems = [
-  { icon: IconShieldCheck, label: "ID verified" },
-  { icon: IconCurrencyRupee, label: "Upfront price" },
-  { icon: IconLock, label: "OTP secured" },
-];
+import { useI18n } from "@/lib/i18n";
 
 export default function HomePage() {
+  const { t } = useI18n();
+
+  const trustItems = [
+    { icon: IconShieldCheck, label: t("home.idVerified") },
+    { icon: IconCurrencyRupee, label: t("home.upfrontPrice") },
+    { icon: IconLock, label: t("home.otpSecured") },
+  ];
+
   return (
     <>
       <AppShell>
@@ -35,14 +38,15 @@ export default function HomePage() {
             <div className="flex items-center gap-1.5">
               <Wordmark inverted />
               <span className="text-[16px] font-medium tracking-tight" style={{ color: "rgba(255,255,255,0.9)" }}>
-                in 10 minutes
+                {t("home.in10min")}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <Link
                 href="/profile"
-                className="relative w-9 h-9 flex items-center justify-center rounded-full bg-white shadow-sm no-select"
-                aria-label="Profile"
+                className="relative w-9 h-9 flex items-center justify-center rounded-full shadow-sm no-select"
+                style={{ backgroundColor: "var(--surface-border)" }}
+                aria-label={t("profile.title")}
                 data-pressable=""
               >
                 <IconUser size={18} className="text-ink" />
@@ -59,42 +63,42 @@ export default function HomePage() {
               className="inline-flex items-center px-2 py-1 rounded-[8px] text-[12px] font-medium mb-2"
               style={{ backgroundColor: "#F5B731", color: "#1F1A24" }}
             >
-              <IconBolt size={14} className="mr-0.5" /> 10 min
+              <IconBolt size={14} className="mr-0.5" /> {t("home.helperBadge")}
             </span>
             <h2
               className="text-[23px] font-medium leading-[1.25] mb-1 tracking-tighter whitespace-nowrap"
               style={{ color: "#FFFFFF" }}
             >
-              Helper at your door in 10 minutes
+              {t("home.headline")}
             </h2>
             <p className="text-[15px]" style={{ color: "rgba(255,255,255,0.85)" }}>
-              Book, they clean, they go.
+              {t("home.subline")}
             </p>
           </div>
 
           {/* ── What do you need? ── */}
           <div className="mt-6 mb-2">
-            <h3 className="text-[18px] font-medium" style={{ color: "#FFFFFF" }}>What do you need?</h3>
+            <h3 className="text-[18px] font-medium" style={{ color: "#FFFFFF" }}>{t("home.whatDoYouNeed")}</h3>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <ServiceCard
               slug="minor-clean"
-              title="Minor clean"
+              title={t("home.minorClean")}
               image="/services/sweeping-and-mopping.jpg"
               iconFallback="broom"
-              subtitle="Sweep, mop, dust, utensils"
-              price="From ₹249"
+              subtitle={t("home.minorDesc")}
+              price={t("home.fromPrice")}
               href="/service/svc_minor"
               priority
               variant="hero"
             />
             <ServiceCard
               slug="major-clean"
-              title="Major clean"
+              title={t("home.majorClean")}
               image="/services/bathroom-cleaning.jpg"
               iconFallback="sparkles"
-              subtitle="Washrooms, kitchen, sofa and more"
-              price="Price by home size"
+              subtitle={t("home.majorDesc")}
+              price={t("home.priceByHome")}
               href="/service/svc_major"
               priority
               variant="hero"
@@ -107,9 +111,9 @@ export default function HomePage() {
               href="/book"
               data-pressable=""
               className="flex items-center justify-center w-full h-[48px] rounded-[12px] text-[15px] font-medium no-underline no-select"
-              style={{ backgroundColor: "#FFFFFF", color: "var(--brand-rose)" }}
+              style={{ backgroundColor: "var(--app-bg)", color: "var(--ink)" }}
             >
-              Book a helper
+              {t("home.bookHelper")}
             </a>
           </div>
         </div>
@@ -130,13 +134,13 @@ export default function HomePage() {
         </div>
 
         {/* ── Services included ── */}
-        <SectionTitle>Services included</SectionTitle>
+        <SectionTitle>{t("home.servicesIncluded")}</SectionTitle>
         <div className="grid grid-cols-2 gap-3">
           {allServices.map((s) => (
             <ServiceCard
               key={s.slug}
               slug={s.slug}
-              title={s.name}
+              title={t(`services.${s.slug}`) !== `services.${s.slug}` ? t(`services.${s.slug}`) : s.name}
               image={s.image}
               href={`/services/${s.slug}`}
             />

@@ -58,12 +58,11 @@ function saveState(state: AddressState) {
 const AddressContext = createContext<(AddressState & AddressActions) | null>(null);
 
 export function AddressProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AddressState>(SEED);
+  const [state, setState] = useState<AddressState>(() => loadState());
   const [hydrated, setHydrated] = useState(false);
 
-  // Hydrate from localStorage on mount
+  // Set hydrated to true on mount to allow client-side-only rendering logic
   useEffect(() => {
-    setState(loadState());
     setHydrated(true);
   }, []);
 

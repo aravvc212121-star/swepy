@@ -3,7 +3,7 @@ import type { ReactNode, ButtonHTMLAttributes } from "react";
 /* ── PageTitle ── */
 export function PageTitle({ children }: { children: ReactNode }) {
   return (
-    <h1 className="text-[20px] font-medium leading-tight mb-4" style={{ color: "#1F1A24" }}>
+    <h1 className="text-[20px] font-medium leading-tight mb-4" style={{ color: "var(--ink)" }}>
       {children}
     </h1>
   );
@@ -12,7 +12,7 @@ export function PageTitle({ children }: { children: ReactNode }) {
 /* ── SectionTitle ── */
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="text-[16px] font-medium leading-tight mt-5 mb-3" style={{ color: "#1F1A24" }}>
+    <h2 className="text-[16px] font-medium leading-tight mt-5 mb-3" style={{ color: "var(--ink)" }}>
       {children}
     </h2>
   );
@@ -28,8 +28,8 @@ export function Card({
 }) {
   return (
     <div
-      className={`bg-white rounded-[14px] p-4 ${className}`}
-      style={{ border: "0.5px solid #E6DEE2" }}
+      className={`rounded-[14px] p-4 ${className}`}
+      style={{ backgroundColor: "var(--surface)", border: "0.5px solid var(--surface-border)" }}
     >
       {children}
     </div>
@@ -40,8 +40,8 @@ export function Card({
 export function ListCard({ children }: { children: ReactNode }) {
   return (
     <div
-      className="bg-white rounded-[14px] overflow-hidden"
-      style={{ border: "0.5px solid #E6DEE2" }}
+      className="rounded-[14px] overflow-hidden"
+      style={{ backgroundColor: "var(--surface)", border: "0.5px solid var(--surface-border)" }}
     >
       {children}
     </div>
@@ -66,7 +66,7 @@ export function ListCardRow({
       className={`w-full flex items-center gap-3 px-4 py-3.5 text-left min-h-[48px] ${
         onClick ? "cursor-pointer no-select" : ""
       }`}
-      style={!last ? { borderBottom: "0.5px solid #E6DEE2" } : undefined}
+      style={!last ? { borderBottom: "0.5px solid var(--surface-border)" } : undefined}
       {...(onClick ? { "data-pressable": "" } : {})}
     >
       {children}
@@ -92,12 +92,12 @@ export function Button({
     "h-12 rounded-[12px] px-4 text-[15px] font-medium flex items-center justify-center";
   const variants = {
     primary: "text-white",
-    secondary: "text-ink",
+    secondary: "",
   };
   const bg =
     variant === "primary"
-      ? { backgroundColor: "#B3295B" }
-      : { backgroundColor: "#FFFFFF", border: "0.5px solid #E6DEE2" };
+      ? { backgroundColor: "var(--brand-rose)" }
+      : { backgroundColor: "var(--surface)", border: "0.5px solid var(--surface-border)", color: "var(--ink)" };
 
   return (
     <button
@@ -124,7 +124,6 @@ export function ButtonLink({
   children: ReactNode;
   className?: string;
 }) {
-  // We use an <a> tag here, the parent page should wrap with next/link if needed
   const base =
     "h-12 rounded-[12px] px-4 text-[15px] font-medium flex items-center justify-center no-underline";
   const variants = {
@@ -133,14 +132,14 @@ export function ButtonLink({
   };
   const bg =
     variant === "primary"
-      ? { backgroundColor: "#B3295B" }
-      : { backgroundColor: "#FFFFFF", border: "0.5px solid #E6DEE2" };
+      ? { backgroundColor: "var(--brand-rose)" }
+      : { backgroundColor: "var(--surface)", border: "0.5px solid var(--surface-border)" };
 
   return (
     <a
       href={href}
       className={`${base} ${variants[variant]} ${fullWidth ? "w-full" : ""} ${className}`}
-      style={{ ...bg, color: variant === "primary" ? "#FFFFFF" : "#1F1A24" }}
+      style={{ ...bg, color: variant === "primary" ? "#FFFFFF" : "var(--ink)" }}
     >
       {children}
     </a>
@@ -162,9 +161,9 @@ export function Chip({
       onClick={onClick}
       className="flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[13px] font-medium"
       style={{
-        backgroundColor: selected ? "#E3F4F5" : "#FFFFFF",
-        border: `0.5px solid ${selected ? "#0F8B94" : "#E6DEE2"}`,
-        color: selected ? "#0A5A61" : "#1F1A24",
+        backgroundColor: selected ? "var(--teal-soft)" : "var(--surface)",
+        border: `0.5px solid ${selected ? "var(--teal)" : "var(--surface-border)"}`,
+        color: selected ? "var(--teal-dark)" : "var(--ink)",
       }}
     >
       {children}
