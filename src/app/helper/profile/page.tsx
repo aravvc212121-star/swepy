@@ -197,6 +197,13 @@ export default function HelperProfilePage() {
           style={{ border: "1px solid var(--surface-border)", color: "#B3261E" }}>
           Log out
         </button>
+
+        {/* Version info */}
+        <div className="mb-4 text-center">
+          <p className="text-[12px] text-ink-muted">
+            Version {process.env.NEXT_PUBLIC_APP_VERSION || "v1.0.0"}
+          </p>
+        </div>
       </div>
       <HelperBottomNav />
     </>

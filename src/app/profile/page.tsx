@@ -272,6 +272,13 @@ export default function ProfilePage() {
             </ListCardRow>
           </ListCard>
         </div>
+
+        {/* Version info */}
+        <div className="mt-6 mb-4 text-center">
+          <p className="text-[12px] text-ink-muted">
+            Version {process.env.NEXT_PUBLIC_APP_VERSION || "v1.0.0"}
+          </p>
+        </div>
       </AppShell>
 
       <BottomNav />
