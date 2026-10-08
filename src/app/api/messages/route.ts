@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     
     // Get server time as ISO string
     const timeRes = await sql`SELECT NOW() as t`;
-    const serverNow = timeRes[0].t.toISOString();
+    const serverNow = new Date(timeRes[0].t).toISOString();
     
     let rows;
     if (sinceDecoded) {
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     let nextSince = serverNow;
     if (rows.length > 0) {
       // Use the timestamp of the last (newest) row as ISO string
-      nextSince = rows[rows.length - 1].ts.toISOString();
+      nextSince = new Date(rows[rows.length - 1].ts).toISOString();
     } else {
       // If no new rows, keep the requested since
       nextSince = sinceDecoded ? sinceDecoded : serverNow;
