@@ -3,8 +3,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '../../../server/db/client';
 import { uuidv7 } from '../../../server/lib/id';
 
+let tableCreated = false;
+
+async function ensureTable() {
+  if (tableCreated) return;
+  await sql`
+    CREATE TABLE IF NOT EXISTS demo_messages (
+      id TEXT PRIMARY KEY,
+      payload JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `;
+  tableCreated = true;
+}
+
 export async function POST(req: NextRequest) {
   try {
+    await ensureTable();
+
     const payload = await req.json();
     await sql`
       INSERT INTO demo_messages (id, payload)
@@ -19,6 +35,8 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    await ensureTable();
+
     const url = new URL(req.url);
     const since = url.searchParams.get('since');
     const sinceDecoded = since && since !== 'null' && since !== 'undefined' ? decodeURIComponent(since) : null;

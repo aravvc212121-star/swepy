@@ -201,3 +201,9 @@ export const outbox_events = pgTable("outbox_events", {
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   processed_at: timestamp("processed_at", { withTimezone: true }),
 });
+
+export const demo_messages = pgTable("demo_messages", {
+  id: text("id").primaryKey(),
+  payload: jsonb("payload").notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
