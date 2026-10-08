@@ -18,12 +18,12 @@ export function uuidv7(): string {
   bytes.set(rand);
 
   // Bytes 0-5: 48-bit timestamp (big-endian)
-  bytes[0] = Number((now >> 40n) & 0xFFn);
-  bytes[1] = Number((now >> 32n) & 0xFFn);
-  bytes[2] = Number((now >> 24n) & 0xFFn);
-  bytes[3] = Number((now >> 16n) & 0xFFn);
-  bytes[4] = Number((now >> 8n) & 0xFFn);
-  bytes[5] = Number(now & 0xFFn);
+  bytes[0] = Number((now >> BigInt(40)) & BigInt(0xFF));
+  bytes[1] = Number((now >> BigInt(32)) & BigInt(0xFF));
+  bytes[2] = Number((now >> BigInt(24)) & BigInt(0xFF));
+  bytes[3] = Number((now >> BigInt(16)) & BigInt(0xFF));
+  bytes[4] = Number((now >> BigInt(8)) & BigInt(0xFF));
+  bytes[5] = Number(now & BigInt(0xFF));
 
   // Byte 6: version 7 (0111xxxx)
   bytes[6] = (bytes[6] & 0x0F) | 0x70;
