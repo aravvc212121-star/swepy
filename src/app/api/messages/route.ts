@@ -20,25 +20,42 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    const since = url.searchParams.get('since');
+    const sinceParam = url.searchParams.get('since');
+    const since = sinceParam && sinceParam !== 'null' && sinceParam !== 'undefined' ? sinceParam : null;
+    
+    const timeRes = await sql`SELECT (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint as t`;
+    const serverNow = timeRes[0].t;
     
     let rows;
     if (since) {
       const sinceDate = new Date(Number(since));
       rows = await sql`
-        SELECT payload FROM demo_messages 
+        SELECT payload, (EXTRACT(EPOCH FROM created_at) * 1000)::bigint as ts 
+        FROM demo_messages 
         WHERE created_at > ${sinceDate}
         ORDER BY created_at ASC
       `;
     } else {
       rows = await sql`
-        SELECT payload FROM demo_messages 
+        SELECT payload, (EXTRACT(EPOCH FROM created_at) * 1000)::bigint as ts 
+        FROM demo_messages 
         WHERE created_at > NOW() - INTERVAL '30 seconds'
         ORDER BY created_at ASC
       `;
     }
 
-    return NextResponse.json({ events: rows.map(r => r.payload) });
+    let nextSince = serverNow;
+    if (rows.length > 0) {
+      const lastRowTs = rows[rows.length - 1].ts;
+      if (lastRowTs >= serverNow) {
+        nextSince = lastRowTs;
+      }
+    }
+
+    return NextResponse.json({ 
+      events: rows.map(r => r.payload),
+      nextSince: String(nextSince)
+    });
   } catch (err: any) {
     console.error("GET /api/messages error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
