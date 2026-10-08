@@ -1,7 +1,7 @@
 import { BookingRepository } from '../repositories/booking.repository';
 import { HelperRepository } from '../repositories/helper.repository';
 import type { RealtimeGateway } from '../lib/interfaces';
-import { haversine } from '../lib/swepy/matching'; // assuming haversine is exported from there or I'll reimplement
+
 import * as h3 from 'h3-js';
 
 // Simple haversine implementation if not fully exposed

@@ -113,7 +113,7 @@ export default function SearchingPage() {
     // Use the first service price as demo (Minor clean · 2 BHK)
     const sp = servicePrices[1]; // minor_clean, 2bhk
 
-    const newBookingLocal = store.createBooking({
+    const newBooking = store.createBooking({
       id: "bk_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6), // Temp ID until API returns
       user_id: session.user_id,
       user_name: session.name,
@@ -135,8 +135,8 @@ export default function SearchingPage() {
       created_at: new Date().toISOString(),
     });
 
-    setBookingId(newBookingLocal.id);
-    bookingRef.current = newBookingLocal;
+    setBookingId(newBooking.id);
+    bookingRef.current = newBooking;
 
     // Call real API
     fetch('/api/bookings', {
@@ -150,7 +150,7 @@ export default function SearchingPage() {
         lat: userLat,
         lng: userLng,
         cityId: 'city_bangalore',
-        idempotencyKey: newBookingLocal.id
+        idempotencyKey: newBooking.id
       })
     })
     .then(res => res.json())

@@ -330,6 +330,7 @@ export default function BookedPage() {
               radius_step: dbBooking.dispatch_wave,
               rating: null,
               created_at: dbBooking.created_at,
+              updated_at: dbBooking.updated_at || dbBooking.created_at,
             });
             setStatus(dbBooking.status as TrackingStatus);
             setDistance(0.5); // Mock distance since DB doesn't track live location yet

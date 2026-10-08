@@ -1,4 +1,5 @@
-import type { SwepyTransport, RealtimeEvent } from "./transport";
+import type { SwepyTransport } from "./transport";
+import type { RealtimeEvent } from "./types";
 
 export function createPollingTransport(): SwepyTransport {
   const listeners = new Set<(e: RealtimeEvent) => void>();
