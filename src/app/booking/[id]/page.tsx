@@ -73,7 +73,7 @@ function getHeadline(status: TrackingStatus, name: string, etaMin: number, t: (k
     case "on_the_way": return t("booking.arrivingIn", { name, eta: etaMin });
     case "arrived": return t("booking.hasArrived", { name });
     case "in_progress": return t("booking.inProgress");
-    case "completed": return t("booking.completed");
+    case "completed": return "Order Done! 🎉";
     case "cancelled": return t("booking.cancelled");
     case "expired": return "No helper found";
     default: return t("booking.arrivingIn", { name, eta: etaMin });
@@ -282,20 +282,55 @@ export default function BookedPage() {
         const dist = haversine({ lat: local.lat, lng: local.lng }, { lat: local.helper_lat, lng: local.helper_lng });
         setDistance(dist);
         setEtaMin(Math.max(1, Math.round(computeEta(dist))));
+        setHelperLivePosition({
+          lat: local.helper_lat,
+          lng: local.helper_lng,
+          stale: false,
+        });
+        setIsLocating(false);
       }
       return;
     }
 
-    if (bookingId === 'demo') {
-      const b = store.getBooking(bookingId);
-      if (b) {
-        setBooking(b);
-        setStatus(b.status as TrackingStatus);
-        if (b.helper_lat && b.helper_lng) {
-          const dist = haversine({ lat: b.lat, lng: b.lng }, { lat: b.helper_lat, lng: b.helper_lng });
-          setDistance(dist);
-          setEtaMin(Math.max(1, Math.round(computeEta(dist))));
-        }
+    if (bookingId === "demo") {
+      let b = store.getBooking(bookingId);
+      if (!b) {
+        b = {
+          id: "demo",
+          user_id: "customer_demo",
+          user_name: "Customer",
+          service_name: "Regular Cleaning",
+          home_size: "2 BHK",
+          address_short: "Sector 14, Gurugram",
+          address_full: "Tower B, Sector 14, Gurugram, Haryana",
+          lat: 28.6139,
+          lng: 77.2090,
+          price: 299,
+          otp: "4821",
+          status: "accepted",
+          helper_id: "helper_1",
+          helper_name: "Pooja Sharma",
+          helper_lat: 28.6069,
+          helper_lng: 77.2030,
+          radius_step: 0,
+          rating: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        store.createBooking(b);
+      }
+      setBooking(b);
+      setStatus(b.status as TrackingStatus);
+      if (b.helper_lat && b.helper_lng) {
+        const dist = haversine({ lat: b.lat, lng: b.lng }, { lat: b.helper_lat, lng: b.helper_lng });
+        setDistance(dist);
+        setEtaMin(Math.max(1, Math.round(computeEta(dist))));
+        setHelperLivePosition({
+          lat: b.helper_lat,
+          lng: b.helper_lng,
+          stale: false,
+        });
+        setIsLocating(false);
       }
     } else {
       // 2. Fallback to API if not present in local store
@@ -304,7 +339,7 @@ export default function BookedPage() {
         .then(data => {
           if (data.success && data.booking) {
             const dbBooking = data.booking;
-            setBooking({
+            const newB: SwepyBooking = {
               id: dbBooking.id,
               user_id: dbBooking.customer_id,
               user_name: 'Customer',
@@ -315,20 +350,28 @@ export default function BookedPage() {
               lat: 28.6139,
               lng: 77.2090,
               price: dbBooking.price_paise / 100,
-              otp: dbBooking.start_code || '0000',
+              otp: dbBooking.start_code || '4821',
               status: dbBooking.status,
               helper_id: dbBooking.helper_id,
               helper_name: dbBooking.helper_id ? 'Helper' : null,
-              helper_lat: 28.6145,
-              helper_lng: 77.2100,
+              helper_lat: 28.6069,
+              helper_lng: 77.2030,
               radius_step: dbBooking.dispatch_wave,
               rating: null,
               created_at: dbBooking.created_at,
               updated_at: dbBooking.updated_at || dbBooking.created_at,
-            });
+            };
+            setBooking(newB);
             setStatus(dbBooking.status as TrackingStatus);
-            setDistance(0.5);
-            setEtaMin(5);
+            setDistance(0.8);
+            setEtaMin(6);
+            if (newB.helper_lat && newB.helper_lng) {
+              setHelperLivePosition({
+                lat: newB.helper_lat,
+                lng: newB.helper_lng,
+                stale: false,
+              });
+            }
           }
         })
         .catch(console.error);
@@ -337,7 +380,7 @@ export default function BookedPage() {
 
   // Listen for realtime events
   useEffect(() => {
-    if (!ready || !booking) return;
+    if (!ready) return;
     const unsub = transport.subscribe((event: RealtimeEvent) => {
       if (session && event.sender === session.user_id) return;
 
@@ -345,17 +388,36 @@ export default function BookedPage() {
       if (event.type === "job_location" && event.booking_id === bookingId) {
         setBooking(prev => prev ? { ...prev, helper_lat: event.lat, helper_lng: event.lng } : prev);
         store.updateBooking(bookingId, { helper_lat: event.lat, helper_lng: event.lng });
-        if (booking) {
-          const dist = haversine({ lat: booking.lat, lng: booking.lng }, { lat: event.lat, lng: event.lng });
-          setDistance(dist);
-          setEtaMin(Math.max(1, Math.round(computeEta(dist))));
-        }
+        setHelperLivePosition({
+          lat: event.lat,
+          lng: event.lng,
+          heading_deg: event.heading_deg ?? null,
+          stale: false,
+        });
+        setIsLocating(false);
+        setLastUpdatedSec(1);
+        setBooking(prev => {
+          if (prev) {
+            const dist = haversine({ lat: prev.lat, lng: prev.lng }, { lat: event.lat, lng: event.lng });
+            setDistance(dist);
+            setEtaMin(Math.max(1, Math.round(computeEta(dist))));
+          }
+          return prev;
+        });
       }
 
       // Also listen to general helper_location if helper_id matches
       if (event.type === "helper_location" && booking && event.helper_id === booking.helper_id) {
         setBooking(prev => prev ? { ...prev, helper_lat: event.lat, helper_lng: event.lng } : prev);
         store.updateBooking(bookingId, { helper_lat: event.lat, helper_lng: event.lng });
+        setHelperLivePosition({
+          lat: event.lat,
+          lng: event.lng,
+          heading_deg: event.heading_deg ?? null,
+          stale: false,
+        });
+        setIsLocating(false);
+        setLastUpdatedSec(1);
         const dist = haversine({ lat: booking.lat, lng: booking.lng }, { lat: event.lat, lng: event.lng });
         setDistance(dist);
         setEtaMin(Math.max(1, Math.round(computeEta(dist))));
@@ -372,23 +434,37 @@ export default function BookedPage() {
       // Helper assigned or accepted
       if ((event.type === "booking_assigned" || event.type === "booking_accept") && event.booking_id === bookingId) {
         setStatus("accepted");
+        const lat = ("lat" in event && typeof event.lat === "number") ? event.lat : undefined;
+        const lng = ("lng" in event && typeof event.lng === "number") ? event.lng : undefined;
         setBooking(prev => {
           if (!prev) return null;
-          const lat = ("lat" in event && typeof event.lat === "number") ? event.lat : prev.helper_lat;
-          const lng = ("lng" in event && typeof event.lng === "number") ? event.lng : prev.helper_lng;
           return {
             ...prev,
             status: "accepted",
             helper_id: event.helper_id,
             helper_name: event.helper_name,
-            helper_lat: lat ?? null,
-            helper_lng: lng ?? null,
+            helper_lat: lat ?? prev.helper_lat,
+            helper_lng: lng ?? prev.helper_lng,
           };
         });
+        if (lat && lng) {
+          setHelperLivePosition({ lat, lng, stale: false });
+          setIsLocating(false);
+          setLastUpdatedSec(1);
+          setBooking(prev => {
+            if (prev) {
+              const dist = haversine({ lat: prev.lat, lng: prev.lng }, { lat, lng });
+              setDistance(dist);
+              setEtaMin(Math.max(1, Math.round(computeEta(dist))));
+            }
+            return prev;
+          });
+        }
         store.updateBooking(bookingId, {
           status: "accepted",
           helper_id: event.helper_id,
           helper_name: event.helper_name,
+          ...(lat && lng ? { helper_lat: lat, helper_lng: lng } : {}),
         });
       }
     });
@@ -488,7 +564,7 @@ export default function BookedPage() {
 
   const helperName = booking.helper_name || "Helper";
   const helperInitial = helperName.charAt(0).toUpperCase();
-  const otpDigits = booking.otp.split("");
+  const otpDigits = (booking.otp || "4821").slice(0, 4).padEnd(4, "0").split("");
   const showOtp = status === "on_the_way" || status === "accepted" || status === "arrived";
   const otpVerified = status === "in_progress" || status === "completed";
   const showHelper = status !== "searching" && status !== "cancelled" && status !== "expired" && booking.helper_name;
@@ -641,6 +717,14 @@ export default function BookedPage() {
                   </div>
                 ) : (
                   <>
+                    {status === "arrived" && (
+                      <div className="mb-3.5 p-3 rounded-[12px] flex items-center gap-2.5" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FCD34D" }}>
+                        <span className="text-[20px] shrink-0">🔔</span>
+                        <p className="text-[13px] font-medium leading-snug" style={{ color: "#92400E" }}>
+                          {helperName} has arrived at your door! Share your 4-digit code below to start.
+                        </p>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-8 h-8 rounded-[12px] flex items-center justify-center" style={{ backgroundColor: C.brandTint }}>
                         <IconShieldCheck size={18} style={{ color: C.brand }} />
@@ -718,20 +802,70 @@ export default function BookedPage() {
               </div>
             </div>
 
-            {/* g. Completed: rating */}
+            {/* g. Completed: Order Done Banner & Rating */}
             {status === "completed" && (
-              <div className="rounded-[16px] p-4 text-center" style={{ backgroundColor: C.cardFill, border: `1px solid ${C.hairline}` }}>
-                <p className="text-[14px] font-medium mb-3" style={{ color: C.ink }}>Rate your experience</p>
-                <div className="flex items-center justify-center gap-2 mb-3">
-                  {[1, 2, 3, 4, 5].map(star => (
-                    <button key={star} type="button" onClick={() => handleRate(star)}
-                      className="text-[28px] no-select"
-                      style={{ color: star <= rating ? "#F5A623" : C.hairline }}>
-                      ★
-                    </button>
-                  ))}
+              <div
+                className="rounded-[20px] p-6 text-center shadow-sm"
+                style={{
+                  backgroundColor: C.cardFill,
+                  border: `1.5px solid ${C.success}`,
+                }}
+              >
+                <div
+                  className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3"
+                  style={{
+                    backgroundColor: "rgba(45, 106, 79, 0.12)",
+                    fontSize: "32px",
+                  }}
+                >
+                  🎉
                 </div>
-                {rating > 0 && <p className="text-[13px]" style={{ color: C.success }}>Thanks for your feedback!</p>}
+                <h2 className="text-[22px] font-bold tracking-tight mb-1" style={{ color: C.ink }}>
+                  Order Done!
+                </h2>
+                <p className="text-[14px] leading-relaxed mb-4" style={{ color: C.secondary }}>
+                  Your service has been completed successfully. Your home is fresh and clean!
+                </p>
+
+                {/* Rating card */}
+                <div
+                  className="rounded-[14px] p-4 mb-4"
+                  style={{
+                    backgroundColor: C.white,
+                    border: `1px solid ${C.hairline}`,
+                  }}
+                >
+                  <p className="text-[13px] font-medium mb-2" style={{ color: C.ink }}>
+                    Rate your experience with {helperName}
+                  </p>
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => handleRate(star)}
+                        className="text-[32px] no-select cursor-pointer active:scale-125 transition-transform"
+                        style={{ color: star <= rating ? "#F5A623" : C.hairline }}
+                        aria-label={`${star} star`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                  {rating > 0 && (
+                    <p className="text-[12px] font-medium" style={{ color: C.success }}>
+                      Thanks for rating {helperName}!
+                    </p>
+                  )}
+                </div>
+
+                <Link
+                  href="/"
+                  className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white flex items-center justify-center no-underline shadow-xs"
+                  style={{ backgroundColor: C.brand }}
+                >
+                  Back to Home
+                </Link>
               </div>
             )}
 

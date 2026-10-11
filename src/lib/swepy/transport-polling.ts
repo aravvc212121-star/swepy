@@ -6,6 +6,19 @@ export function createPollingTransport(): SwepyTransport {
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let lastSync: string | null = null;
 
+  // BroadcastChannel for instant (0ms) cross-tab communication during demo & local testing
+  const channel = typeof window !== "undefined" && "BroadcastChannel" in window
+    ? new BroadcastChannel("swepy_realtime")
+    : null;
+
+  if (channel) {
+    channel.onmessage = (msg) => {
+      if (msg.data) {
+        listeners.forEach(l => l(msg.data));
+      }
+    };
+  }
+
   function startPolling() {
     if (intervalId) return;
     intervalId = setInterval(async () => {
@@ -45,6 +58,11 @@ export function createPollingTransport(): SwepyTransport {
       // Optimistically dispatch locally so the sender sees it immediately
       listeners.forEach(l => l(event));
       
+      // Instantly dispatch to other open tabs on this browser
+      try {
+        channel?.postMessage(event);
+      } catch { /* ignore */ }
+
       // Send to server so other devices see it
       fetch('/api/messages', {
         method: 'POST',
@@ -68,6 +86,7 @@ export function createPollingTransport(): SwepyTransport {
 
     destroy() {
       stopPolling();
+      try { channel?.close(); } catch { /* ignore */ }
       listeners.clear();
     },
   };

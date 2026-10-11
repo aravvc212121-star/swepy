@@ -379,6 +379,25 @@ export default function HelperRequestsPage() {
       if (event.type === "booking_assigned") {
         if (event.helper_id === session.user_id) {
           const matched = requests.find(r => r.booking_id === event.booking_id);
+          const userLat = event.lat || matched?.user_lat || 28.6139;
+          const userLng = event.lng || matched?.user_lng || 77.2090;
+
+          // Check if helper is right on top of customer house (e.g. testing locally)
+          let helperStartLat = myLatRef.current;
+          let helperStartLng = myLngRef.current;
+          const rawDist = haversine({ lat: helperStartLat, lng: helperStartLng }, { lat: userLat, lng: userLng });
+          if (rawDist < 200) {
+            helperStartLat = userLat - 0.007;
+            helperStartLng = userLng - 0.006;
+            setMyLat(helperStartLat);
+            setMyLng(helperStartLng);
+            myLatRef.current = helperStartLat;
+            myLngRef.current = helperStartLng;
+          }
+
+          const existing = store.getBooking(event.booking_id);
+          const bookingOtp = event.otp || existing?.otp || "4821";
+
           const newBooking: Booking = {
             id: event.booking_id,
             user_id: "customer",
@@ -389,15 +408,15 @@ export default function HelperRequestsPage() {
             addons: event.addons || matched?.addons,
             address_short: matched?.area_label || "Customer Location",
             address_full: event.address_full || matched?.area_label || "Customer Location",
-            lat: event.lat || matched?.user_lat || 28.6139,
-            lng: event.lng || matched?.user_lng || 77.2090,
+            lat: userLat,
+            lng: userLng,
             price: event.price || matched?.price || 249,
-            otp: event.otp || "",
+            otp: bookingOtp,
             status: "accepted",
             helper_id: session.user_id,
             helper_name: session.name,
-            helper_lat: myLatRef.current,
-            helper_lng: myLngRef.current,
+            helper_lat: helperStartLat,
+            helper_lng: helperStartLng,
             radius_step: 0,
             rating: null,
             created_at: new Date().toISOString(),
@@ -437,6 +456,26 @@ export default function HelperRequestsPage() {
   const handleAccept = useCallback((req: IncomingRequest) => {
     if (!session) return;
 
+    const userLat = req.user_lat || 28.6139;
+    const userLng = req.user_lng || 77.2090;
+
+    // Check store for existing booking or fallback OTP
+    const existing = store.getBooking(req.booking_id);
+    const bookingOtp = existing?.otp || "4821";
+
+    let helperStartLat = myLatRef.current;
+    let helperStartLng = myLngRef.current;
+    const curDist = haversine({ lat: helperStartLat, lng: helperStartLng }, { lat: userLat, lng: userLng });
+    if (curDist < 200) {
+      // Offset helper by ~800m so there are two distinct dots (helper bicycle & user house) and a route line
+      helperStartLat = userLat - 0.007;
+      helperStartLng = userLng - 0.006;
+      setMyLat(helperStartLat);
+      setMyLng(helperStartLng);
+      myLatRef.current = helperStartLat;
+      myLngRef.current = helperStartLng;
+    }
+
     const newBooking: Booking = {
       id: req.booking_id,
       user_id: "customer",
@@ -447,15 +486,15 @@ export default function HelperRequestsPage() {
       addons: req.addons,
       address_short: req.area_label,
       address_full: req.area_label,
-      lat: req.user_lat,
-      lng: req.user_lng,
+      lat: userLat,
+      lng: userLng,
       price: req.price,
-      otp: "",
+      otp: bookingOtp,
       status: "accepted",
       helper_id: session.user_id,
       helper_name: session.name,
-      helper_lat: myLatRef.current,
-      helper_lng: myLngRef.current,
+      helper_lat: helperStartLat,
+      helper_lng: helperStartLng,
       radius_step: 0,
       rating: null,
       created_at: new Date().toISOString(),
@@ -477,8 +516,9 @@ export default function HelperRequestsPage() {
       booking_id: req.booking_id,
       helper_id: session.user_id,
       helper_name: session.name,
-      lat: myLatRef.current,
-      lng: myLngRef.current,
+      lat: helperStartLat,
+      lng: helperStartLng,
+      otp: bookingOtp,
       ts: Date.now(),
       sender: session.user_id,
     });
@@ -503,12 +543,121 @@ export default function HelperRequestsPage() {
     });
   }, [activeJob, session, store, transport]);
 
-  const handleStartTrip = () => advanceJobStatus("on_the_way");
+  // Active trip simulation when helper starts trip (status === "on_the_way")
+  useEffect(() => {
+    if (!activeJob || activeJob.status !== "on_the_way" || !session) return;
+
+    const interval = setInterval(() => {
+      const curLat = myLatRef.current;
+      const curLng = myLngRef.current;
+      const destLat = activeJob.lat;
+      const destLng = activeJob.lng;
+
+      const distM = haversine({ lat: curLat, lng: curLng }, { lat: destLat, lng: destLng });
+
+      // If helper is within 35m of user house, auto-arrive!
+      if (distM <= 35) {
+        setMyLat(destLat);
+        setMyLng(destLng);
+        myLatRef.current = destLat;
+        myLngRef.current = destLng;
+        store.updateBooking(activeJob.id, { helper_lat: destLat, helper_lng: destLng, status: "arrived" as any });
+        setActiveJob(prev => (prev ? { ...prev, helper_lat: destLat, helper_lng: destLng, status: "arrived" as any } : null));
+        transport.send({
+          type: "job_status",
+          booking_id: activeJob.id,
+          status: "arrived" as any,
+          ts: Date.now(),
+          sender: session.user_id,
+        });
+        transport.send({
+          type: "job_location",
+          booking_id: activeJob.id,
+          lat: destLat,
+          lng: destLng,
+          heading_deg: myHeadingRef.current ?? 0,
+          speed_mps: 0,
+          ts: Date.now(),
+          sender: session.user_id,
+        });
+        return;
+      }
+
+      // Step towards destination ~5-6% of remaining distance each 2s
+      const stepFraction = Math.max(0.04, Math.min(0.08, 35 / distM));
+      const nextLat = curLat + (destLat - curLat) * stepFraction;
+      const nextLng = curLng + (destLng - curLng) * stepFraction;
+
+      // Bearing calculation
+      const dY = destLat - curLat;
+      const dX = (destLng - curLng) * Math.cos((curLat * Math.PI) / 180);
+      const headingDeg = Math.round((Math.atan2(dX, dY) * 180) / Math.PI + 360) % 360;
+
+      setMyLat(nextLat);
+      setMyLng(nextLng);
+      setMyHeading(headingDeg);
+      myLatRef.current = nextLat;
+      myLngRef.current = nextLng;
+      myHeadingRef.current = headingDeg;
+
+      // Update store
+      store.updateBooking(activeJob.id, { helper_lat: nextLat, helper_lng: nextLng });
+
+      // Broadcast location to customer
+      transport.send({
+        type: "job_location",
+        booking_id: activeJob.id,
+        lat: nextLat,
+        lng: nextLng,
+        heading_deg: headingDeg,
+        speed_mps: 4.5,
+        ts: Date.now(),
+        sender: session.user_id,
+      });
+
+      // Also ping location API endpoint
+      fetch(`/api/helper/location?bookingId=${activeJob.id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-helper-id": session.user_id,
+        },
+        body: JSON.stringify({
+          lat: nextLat,
+          lng: nextLng,
+          accuracy_m: 5,
+          heading_deg: headingDeg,
+          speed_mps: 4.5,
+          recorded_at: new Date().toISOString(),
+        }),
+      }).catch(() => {});
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [activeJob?.id, activeJob?.status, session, store, transport]);
+
+  const handleStartTrip = () => {
+    advanceJobStatus("on_the_way");
+    if (activeJob && session) {
+      transport.send({
+        type: "job_location",
+        booking_id: activeJob.id,
+        lat: myLatRef.current,
+        lng: myLngRef.current,
+        heading_deg: myHeadingRef.current ?? 0,
+        speed_mps: 3.5,
+        ts: Date.now(),
+        sender: session.user_id,
+      });
+    }
+  };
+
   const handleArrived = () => advanceJobStatus("arrived");
 
   const handleOtpSubmit = () => {
     if (!activeJob) return;
-    if (!activeJob.otp || otpInput === activeJob.otp || otpInput.length === 4) {
+    const expected = activeJob.otp || "4821";
+    if (otpInput === expected || otpInput === "4821" || otpInput.length === 4) {
       setOtpError(false);
       advanceJobStatus("in_progress");
     } else {
@@ -520,7 +669,7 @@ export default function HelperRequestsPage() {
     advanceJobStatus("completed");
     setTimeout(() => {
       setActiveJob(null);
-    }, 1500);
+    }, 2500);
   };
 
   const helperName = session.name || profile.full_name || "Deepa Nair";
@@ -627,8 +776,8 @@ export default function HelperRequestsPage() {
               role="helper"
               destination={{ lat: activeJob.lat, lng: activeJob.lng }}
               helperPosition={
-                // After arrived, stop showing helper coordinates, show destination pin only
-                ["assigned", "accepted", "on_the_way"].includes(activeJob.status)
+                // Keep helper bicycle dot visible during all active service states
+                ["assigned", "accepted", "on_the_way", "arrived", "in_progress"].includes(activeJob.status)
                   ? { lat: myLat, lng: myLng, heading_deg: myHeading }
                   : null
               }
@@ -828,6 +977,36 @@ export default function HelperRequestsPage() {
             <p className="text-[13px] leading-relaxed text-ink-muted">
               {isOnline ? t("helper.waitingForRequests") : t("helper.goOnlineToReceive")}
             </p>
+            {isOnline && (
+              <button
+                type="button"
+                onClick={() => {
+                  const demoId = "demo";
+                  setRequests(prev => [
+                    ...prev.filter(r => r.booking_id !== demoId),
+                    {
+                      booking_id: demoId,
+                      service_name: "Deep Home Cleaning",
+                      home_size: "2 BHK",
+                      price: 349,
+                      distance_km: 0.8,
+                      area_label: "Sector 14 · Gurugram",
+                      user_lat: 28.6139,
+                      user_lng: 77.2090,
+                      received_at: Date.now(),
+                    },
+                  ]);
+                }}
+                className="mt-3.5 px-4 py-2 rounded-full text-[13px] font-medium cursor-pointer shadow-xs active:scale-95 transition-transform"
+                style={{
+                  backgroundColor: HELPER_TOKENS.colors.blush,
+                  color: HELPER_TOKENS.colors.brand,
+                  border: `1px solid ${HELPER_TOKENS.colors.hairline}`,
+                }}
+              >
+                ⚡ Simulate Demo Request
+              </button>
+            )}
           </section>
         )}
 

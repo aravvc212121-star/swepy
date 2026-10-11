@@ -224,18 +224,21 @@ export default function LiveMap({
 
     if (!destMarkerRef.current) {
       const el = document.createElement("div");
-      el.className = "dest-marker flex items-center justify-center";
-      el.style.width = "36px";
-      el.style.height = "36px";
-      el.style.borderRadius = "50%";
-      el.style.backgroundColor = "#FFFFFF";
-      el.style.border = "2.5px solid #D9507F";
-      el.style.boxShadow = "0 3px 10px rgba(0,0,0,0.2)";
+      el.className = "dest-marker-container";
+      el.style.display = "flex";
+      el.style.flexDirection = "column";
+      el.style.alignItems = "center";
+      el.style.pointerEvents = "none";
       el.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D9507F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-          <polyline points="9 22 9 12 15 12 15 22"></polyline>
-        </svg>
+        <div style="background: #2D6A4F; color: #FFFFFF; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,0,0,0.25); margin-bottom: 2px; white-space: nowrap; display: flex; align-items: center; gap: 3px; letter-spacing: 0.3px;">
+          <span>🏠</span> User House
+        </div>
+        <div style="width: 38px; height: 38px; border-radius: 50%; background: #FFFFFF; border: 3px solid #2D6A4F; box-shadow: 0 4px 12px rgba(45,106,79,0.35); display: flex; align-items: center; justify-content: center;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#2D6A4F" stroke="#FFFFFF" stroke-width="1.5">
+            <path d="M3 10.5L12 3l9 7.5v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <path d="M9 22V12h6v10" fill="#FFFFFF"/>
+          </svg>
+        </div>
       `;
 
       const marker = new maplibregl.Marker({ element: el })
@@ -269,40 +272,37 @@ export default function LiveMap({
 
     // Create marker DOM element if not existing
     if (!helperMarkerRef.current) {
-      const haloEl = document.createElement("div");
-      haloEl.className = "helper-marker-halo";
-      haloEl.style.width = "54px";
-      haloEl.style.height = "54px";
-      haloEl.style.borderRadius = "50%";
-      haloEl.style.backgroundColor = "rgba(217, 80, 127, 0.18)";
-      haloEl.style.display = "flex";
-      haloEl.style.alignItems = "center";
-      haloEl.style.justifyContent = "center";
-      haloEl.style.pointerEvents = "none";
-      haloEl.style.transition = "opacity 300ms ease";
+      const containerEl = document.createElement("div");
+      containerEl.className = "helper-bicycle-marker-container";
+      containerEl.style.display = "flex";
+      containerEl.style.flexDirection = "column";
+      containerEl.style.alignItems = "center";
+      containerEl.style.pointerEvents = "none";
+      containerEl.style.transition = "opacity 300ms ease";
 
-      const dotEl = document.createElement("div");
-      dotEl.style.width = "22px";
-      dotEl.style.height = "22px";
-      dotEl.style.borderRadius = "50%";
-      dotEl.style.backgroundColor = "#D9507F";
-      dotEl.style.border = "3px solid #FFFFFF";
-      dotEl.style.boxShadow = "0 2px 8px rgba(42, 31, 36, 0.3)";
-      dotEl.style.display = "flex";
-      dotEl.style.alignItems = "center";
-      dotEl.style.justifyContent = "center";
-      dotEl.style.color = "#FFFFFF";
-      dotEl.style.fontSize = "11px";
-      dotEl.style.fontWeight = "600";
-      dotEl.innerText = helperInitial;
-      haloEl.appendChild(dotEl);
+      containerEl.innerHTML = `
+        <div style="background: #D9507F; color: #FFFFFF; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,0,0,0.25); margin-bottom: 2px; white-space: nowrap; display: flex; align-items: center; gap: 3px; letter-spacing: 0.3px;">
+          <span>🚲</span> Helper
+        </div>
+        <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 48px; height: 48px; border-radius: 50%; background: rgba(217, 80, 127, 0.25); animation: pulse 1.8s ease-in-out infinite;"></div>
+          <div class="bicycle-badge" style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #E25B8B 0%, #C43B6C 100%); border: 2.5px solid #FFFFFF; box-shadow: 0 3px 10px rgba(196,59,108,0.4); display: flex; align-items: center; justify-content: center; z-index: 2;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="5.5" cy="17.5" r="3.5"/>
+              <circle cx="18.5" cy="17.5" r="3.5"/>
+              <path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5L9 11l4-2 3 4h3"/>
+              <path d="M12 17.5V14l-3-3"/>
+            </svg>
+          </div>
+        </div>
+      `;
 
-      const marker = new maplibregl.Marker({ element: haloEl })
+      const marker = new maplibregl.Marker({ element: containerEl })
         .setLngLat([nextLng, nextLat])
         .addTo(map);
 
       helperMarkerRef.current = marker;
-      helperMarkerElRef.current = haloEl;
+      helperMarkerElRef.current = containerEl;
       currentPosRef.current = [nextLng, nextLat];
       targetPosRef.current = [nextLng, nextLat];
       return;
