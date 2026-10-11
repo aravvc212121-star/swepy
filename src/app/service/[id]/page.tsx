@@ -240,9 +240,9 @@ export default function ServiceDetailPage() {
                 className="flex flex-col gap-2 rounded-[14px] p-3 text-left relative no-select"
                 style={{
                   border: isSelected
-                    ? "2px solid #B3225A"
-                    : "1px solid #F6D9E5",
-                  backgroundColor: isSelected ? "#FFF1F6" : "var(--surface)",
+                    ? "2px solid var(--brand-rose)"
+                    : "1px solid var(--surface-border)",
+                  backgroundColor: isSelected ? "var(--teal-soft)" : "var(--surface)",
                 }}
               >
                 {/* Check badge */}
@@ -252,8 +252,8 @@ export default function ServiceDetailPage() {
                     width: 22,
                     height: 22,
                     borderRadius: "50%",
-                    backgroundColor: isSelected ? "#B3225A" : "transparent",
-                    border: isSelected ? "none" : "1.5px solid #F6D9E5",
+                    backgroundColor: isSelected ? "var(--brand-rose)" : "transparent",
+                    border: isSelected ? "none" : "1.5px solid var(--surface-border)",
                   }}
                 >
                   {isSelected && <IconCheck size={13} className="text-white" strokeWidth={2.5} />}
@@ -272,14 +272,14 @@ export default function ServiceDetailPage() {
 
                 {/* Label */}
                 <div>
-                  <p className="text-[13px] font-medium" style={{ color: isSelected ? "#B3225A" : "var(--ink)" }}>
+                  <p className="text-[13px] font-medium" style={{ color: isSelected ? "var(--brand-rose)" : "var(--ink)" }}>
                     {addon.name}
                   </p>
                   <p className="text-[11px] text-ink-muted mt-0.5">{addon.unit}</p>
                 </div>
 
                 {/* Price */}
-                <p className="text-[12px] font-medium" style={{ color: isSelected ? "#B3225A" : "var(--ink)" }}>
+                <p className="text-[12px] font-medium" style={{ color: isSelected ? "var(--brand-rose)" : "var(--ink)" }}>
                   {formatINR(addon.price)}
                 </p>
               </button>

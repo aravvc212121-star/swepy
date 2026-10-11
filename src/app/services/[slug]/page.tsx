@@ -80,7 +80,7 @@ function StickyBookBar({ slug }: { slug: string }) {
         data-pressable=""
         className="flex items-center justify-center w-full h-[48px] rounded-[12px] text-[14px] font-medium no-underline outline-none focus-visible:outline-2 focus-visible:outline-offset-2 no-select"
         style={{
-          backgroundColor: "#B3225A",
+          backgroundColor: "var(--brand-rose)",
           color: "#FFFFFF",
           outlineColor: "#F6B21A",
         }}
@@ -126,7 +126,7 @@ export default function ServiceDetailPage({
       <div
         className="flex items-center gap-3 shrink-0"
         style={{
-          backgroundColor: "#B3225A",
+          backgroundColor: "var(--brand-rose)",
           padding: "12px 16px",
         }}
       >
@@ -138,7 +138,7 @@ export default function ServiceDetailPage({
           style={{ outlineColor: "#F6B21A" }}
           aria-label="Back"
         >
-          <IconArrowLeft size={16} style={{ color: "#B3225A" }} />
+          <IconArrowLeft size={16} style={{ color: "var(--brand-rose)" }} />
         </button>
         <h1
           className="text-[15px] font-medium truncate"

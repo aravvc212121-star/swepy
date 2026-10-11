@@ -90,8 +90,8 @@
   --ink: #f2eef0;
   --ink-muted: #9e929a;
 
-  /* Brand — keep original pink wash */
-  --brand-rose: #b3295b;
+  /* Brand — dark mode shade */
+  --brand-rose: #3D1230;
   --blush: #1c1c1e;
   --blush-border: #2c2c2e;
 
@@ -117,8 +117,8 @@
   --card-fill: #1c1c1e;
   --sheet-bg: #1c1c1e;
 
-  /* Footer — keep original pink */
-  --footer-bg: #B3225A;
+  /* Footer — dark mode shade */
+  --footer-bg: #3D1230;
   --footer-text: #FBE3EC;
   --footer-copyright: #F8C9DA;
 
