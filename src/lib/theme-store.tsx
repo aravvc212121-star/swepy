@@ -15,11 +15,27 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function applyTheme(theme: Theme) {
+  if (typeof document === "undefined") return;
   const root = document.documentElement;
+  const darkPlum = "#3D1230";
+  const lightBrand = "#b3295b";
+  const color = theme === "dark" ? darkPlum : lightBrand;
+
   if (theme === "dark") {
     root.classList.add("dark");
   } else {
     root.classList.remove("dark");
+  }
+
+  // Update theme-color meta tag for browser top bar / header
+  const metas = document.querySelectorAll('meta[name="theme-color"]');
+  if (metas.length > 0) {
+    metas.forEach((m) => m.setAttribute("content", color));
+  } else {
+    const meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    meta.setAttribute("content", color);
+    document.head.appendChild(meta);
   }
 }
 

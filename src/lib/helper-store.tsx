@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import type {
   HelperProfile, KycStatus, IdType, Language, Experience,
   Skill, ShiftSlot, Gender, EmergencyContact, PayoutAccount,
@@ -131,14 +131,36 @@ function saveProfile(p: HelperProfile) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); } catch { /* ignore */ }
 }
 
+const ONLINE_STORAGE_KEY = "swepy_helper_online";
+
+function loadOnlineStatus(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(ONLINE_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveOnlineStatus(v: boolean) {
+  try {
+    localStorage.setItem(ONLINE_STORAGE_KEY, String(v));
+  } catch { /* ignore */ }
+}
+
 export function HelperProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<HelperProfile>(() => loadProfile());
-  const [isOnline, setIsOnline] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(() => loadOnlineStatus());
   const [jobs] = useState<HelperJob[]>(MOCK_JOBS);
-  const [hydrated, setHydrated] = useState(false);
+  const isMountedRef = useRef(false);
 
-  useEffect(() => { setHydrated(true); }, []);
-  useEffect(() => { if (hydrated) saveProfile(profile); }, [profile, hydrated]);
+  useEffect(() => {
+    if (isMountedRef.current) {
+      saveProfile(profile);
+    } else {
+      isMountedRef.current = true;
+    }
+  }, [profile]);
 
   const updateProfile = useCallback((patch: Partial<HelperProfile>) => {
     setProfile(p => {
@@ -150,6 +172,7 @@ export function HelperProvider({ children }: { children: ReactNode }) {
 
   const setOnline = useCallback((v: boolean) => {
     setIsOnline(v);
+    saveOnlineStatus(v);
   }, []);
 
   const acceptJob = useCallback((id: string) => {

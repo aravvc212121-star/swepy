@@ -27,12 +27,15 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#b3295b",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#b3295b" },
+    { media: "(prefers-color-scheme: dark)", color: "#3D1230" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link
           href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500&display=swap"
