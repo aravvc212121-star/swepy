@@ -94,99 +94,9 @@ function getStatusLabel(status: TrackingStatus, t: (k: string) => string): strin
   }
 }
 
-/* ── Map Component ── */
-function TrackingMap({
-  helperProgress,
-  helperInitial,
-  lat,
-  lng,
-}: {
-  helperProgress: number;
-  helperInitial: string;
-  lat: number | null;
-  lng: number | null;
-}) {
-  if (lat && lng) {
-    const helperLat = lat + 0.0015 * (1 - helperProgress);
-    const helperLng = lng - 0.002 * (1 - helperProgress);
-
-    return (
-      <div className="relative w-full overflow-hidden" style={{ height: "clamp(220px, 36vh, 280px)" }}>
-        <iframe
-          title="Tracking map"
-          style={{
-            border: 0,
-            display: "block",
-            pointerEvents: "none",
-            width: "100%",
-            height: "calc(100% + 60px)",
-            marginTop: "-30px"
-          }}
-          loading="eager"
-          src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.003}%2C${lat - 0.002}%2C${lng + 0.003}%2C${lat + 0.002}&layer=mapnik&marker=${lat}%2C${lng}`}
-        />
-        <div
-          className="absolute transition-all duration-[5000ms] ease-linear"
-          style={{
-            left: `${50 - (lng - helperLng) * 16666.66}%`,
-            top: `${50 - (helperLat - lat) * 25000}%`,
-            transform: "translate(-50%, -50%)",
-            zIndex: 10,
-          }}
-        >
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-medium text-white"
-            style={{
-              backgroundColor: "var(--brand-rose)",
-              border: "2.5px solid var(--surface)",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
-            }}
-          >
-            {helperInitial}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Fallback SVG
-  const hx = 60 + helperProgress * 260;
-  const hy = hx <= 180 ? 70 : 70 + ((hx - 180) / 140) * 100;
-  const clampedHx = Math.min(hx, 320);
-  const clampedHy = Math.min(hy, 170);
-
-  return (
-    <div className="relative w-full overflow-hidden" style={{ height: "clamp(220px, 36vh, 280px)", backgroundColor: "var(--app-bg)" }}>
-      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-        <rect x="0" y="0" width="400" height="240" fill="var(--app-bg)" />
-        <line x1="0" y1="70" x2="400" y2="70" stroke="var(--surface)" strokeWidth="10" />
-        <line x1="0" y1="130" x2="400" y2="130" stroke="var(--surface)" strokeWidth="8" />
-        <line x1="0" y1="180" x2="400" y2="180" stroke="var(--surface)" strokeWidth="10" />
-        <line x1="80" y1="0" x2="80" y2="240" stroke="var(--surface)" strokeWidth="8" />
-        <line x1="180" y1="0" x2="180" y2="240" stroke="var(--surface)" strokeWidth="10" />
-        <line x1="320" y1="0" x2="320" y2="240" stroke="var(--surface)" strokeWidth="8" />
-        <path d="M 60 70 L 180 70 L 180 130 L 320 130 L 320 180" stroke={C.routeLine} strokeWidth="5" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
-        <path d="M 60 70 L 180 70 L 180 130 L 320 130 L 320 180" stroke={C.routeLine} strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <div
-        className="absolute transition-all duration-[5000ms] ease-linear"
-        style={{ left: `${(clampedHx / 400) * 100}%`, top: `${(clampedHy / 240) * 100}%`, transform: "translate(-50%, -50%)" }}
-      >
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-medium text-white"
-          style={{ backgroundColor: C.brand, border: `2.5px solid ${C.white}`, boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}
-        >
-          {helperInitial}
-        </div>
-      </div>
-      <div className="absolute" style={{ left: `${(320 / 400) * 100}%`, top: `${(180 / 240) * 100}%`, transform: "translate(-50%, -50%)" }}>
-        <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: C.white, border: `2px solid ${C.brand}`, boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}>
-          <IconMapPin size={16} style={{ color: C.brand }} />
-        </div>
-      </div>
-    </div>
-  );
-}
+import dynamic from "next/dynamic";
+const LiveMap = dynamic(() => import("@/components/live-map"), { ssr: false });
+import { realtimeGateway, LiveBookingUpdate } from "@/lib/swepy/realtime-gateway";
 
 /* ── Progress Stepper ── */
 function Stepper({ statuses, t }: { statuses: ("completed" | "active" | "upcoming")[]; t: (k: string) => string }) {
@@ -281,15 +191,83 @@ export default function BookedPage() {
   const [booking, setBooking] = useState<SwepyBooking | null>(null);
   const [status, setStatus] = useState<TrackingStatus>("searching");
   const [etaMin, setEtaMin] = useState(8);
-  const [helperProgress, setHelperProgress] = useState(0.15);
   const [distance, setDistance] = useState<number | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [rating, setRating] = useState(0);
+
+  // Live tracking states
+  const [helperLivePosition, setHelperLivePosition] = useState<{
+    lat: number;
+    lng: number;
+    heading_deg?: number | null;
+    stale?: boolean;
+  } | null>(null);
+  const [liveRoute, setLiveRoute] = useState<{
+    geometry: { type: "LineString"; coordinates: [number, number][] };
+    distance_m: number;
+    duration_s: number;
+    source: "ors" | "straight_line";
+  } | null>(null);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [isUnavailable, setIsUnavailable] = useState<boolean>(false);
+  const [lastUpdatedSec, setLastUpdatedSec] = useState<number | null>(null);
+  const [isApproximateEta, setIsApproximateEta] = useState<boolean>(false);
 
   // Initialize session
   useEffect(() => {
     setSession(getSession());
   }, []);
+
+  // Realtime Gateway: subscribe to live tracking API
+  useEffect(() => {
+    const unsub = realtimeGateway.subscribe(
+      bookingId,
+      (data: LiveBookingUpdate) => {
+        if (data.booking_status && data.booking_status !== status) {
+          const s = data.booking_status as TrackingStatus;
+          setStatus(s);
+          if (booking) {
+            setBooking(prev => (prev ? { ...prev, status: s as any } : prev));
+          }
+        }
+
+        if (data.helper) {
+          setHelperLivePosition(data.helper);
+          setIsLocating(false);
+          if (data.helper.updated_at) {
+            const ageSec = Math.max(1, Math.round((Date.now() - new Date(data.helper.updated_at).getTime()) / 1000));
+            setLastUpdatedSec(ageSec);
+            setIsUnavailable(ageSec > 90);
+          }
+        } else {
+          // If in sharing window but no location ping yet
+          if (["assigned", "accepted", "on_the_way", "arrived"].includes(data.booking_status)) {
+            setIsLocating(true);
+          }
+          setHelperLivePosition(null);
+        }
+
+        if (data.route) {
+          setLiveRoute(data.route);
+          setIsApproximateEta(data.route.source === "straight_line");
+        }
+
+        if (data.eta_minutes !== undefined && data.eta_minutes !== null) {
+          setEtaMin(data.eta_minutes);
+        }
+
+        if (data.distance_m !== undefined && data.distance_m !== null) {
+          setDistance(data.distance_m / 1000);
+        }
+      },
+      (err) => {
+        // Network error: keep last position and retry with backoff
+        console.warn("[LiveTracking] Polling warning:", err.message);
+      }
+    );
+
+    return unsub;
+  }, [bookingId, status, booking]);
 
   // Load booking from store or API
   useEffect(() => {
@@ -371,8 +349,6 @@ export default function BookedPage() {
           const dist = haversine({ lat: booking.lat, lng: booking.lng }, { lat: event.lat, lng: event.lng });
           setDistance(dist);
           setEtaMin(Math.max(1, Math.round(computeEta(dist))));
-          const maxDist = 2; // 2 km max
-          setHelperProgress(Math.min(0.95, Math.max(0.15, 1 - dist / maxDist)));
         }
       }
 
@@ -418,15 +394,6 @@ export default function BookedPage() {
     });
     return unsub;
   }, [ready, session, transport, store, booking, bookingId]);
-
-  // Simulate helper progress for demo
-  useEffect(() => {
-    if (status !== "on_the_way" && status !== "accepted") return;
-    const interval = setInterval(() => {
-      setHelperProgress(prev => Math.min(0.92, prev + 0.015));
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [status]);
 
   // Sticky header
   const statusRowRef = useRef<HTMLDivElement>(null);
@@ -563,10 +530,23 @@ export default function BookedPage() {
         {/* ── Map Hero ── */}
         {showMap && (
           <div className="relative">
-            <TrackingMap helperProgress={helperProgress} helperInitial={helperInitial} lat={booking.lat || geo.lat || 28.6139} lng={booking.lng || geo.lng || 77.2090} />
+            <LiveMap
+              role="customer"
+              destination={booking ? { lat: booking.lat || geo.lat || 28.6139, lng: booking.lng || geo.lng || 77.2090 } : null}
+              helperPosition={helperLivePosition}
+              route={liveRoute}
+              status={status}
+              helperInitial={helperInitial}
+              etaMinutes={etaMin}
+              distanceM={distance !== null ? distance * 1000 : null}
+              isApproximateEta={isApproximateEta}
+              isLocating={isLocating}
+              isUnavailable={isUnavailable}
+              lastUpdatedSec={lastUpdatedSec}
+            />
             <Link
               href="/"
-              className="absolute flex items-center justify-center rounded-full"
+              className="absolute flex items-center justify-center rounded-full z-20"
               style={{
                 top: "calc(env(safe-area-inset-top, 0px) + 12px)", left: 16,
                 width: 36, height: 36,
@@ -577,17 +557,6 @@ export default function BookedPage() {
             >
               <IconArrowLeft size={18} style={{ color: C.ink }} />
             </Link>
-            <div
-              className="absolute flex items-center gap-1.5 rounded-full px-3"
-              style={{
-                bottom: 32, left: 16, height: 32,
-                backgroundColor: C.white, boxShadow: "0 1px 6px rgba(0,0,0,0.1)",
-                fontSize: 12, fontWeight: 500, color: C.ink,
-              }}
-            >
-              <IconClock size={14} style={{ color: C.brand }} />
-              ~{etaMin} {t("booking.min")} {distance !== null ? `· ${formatDistance(distance)}` : ""}
-            </div>
           </div>
         )}
 

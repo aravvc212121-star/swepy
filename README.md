@@ -20,6 +20,23 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Real-Time Helper Tracking
+
+Swepy includes a free, portable real-time helper tracking system powered by MapLibre GL JS, OpenFreeMap, and straight-line / OpenRouteService routing.
+
+### Two-Window Testing Workflow
+1. Open the Customer Tracking screen at `/booking/demo` in one browser window.
+2. Open the Helper Home screen at `/helper/orders` in another browser window.
+3. Open the Dev Simulator at `/dev/track-sim` to replay a realistic 20–25 km/h driving route. You will see the helper marker move smoothly with route updates and dynamic ETA.
+
+### Geolocation Simulation via Chrome DevTools
+You can also simulate custom or moving GPS coordinates directly in your browser:
+1. Open Chrome DevTools (`F12` or `Ctrl+Shift+I`).
+2. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac), type **Show Sensors**, and select **Sensors**.
+3. Under the **Location** dropdown, choose a preset or select **Other...** to enter custom latitude and longitude coordinates.
+4. As you adjust coordinates, both `/helper/orders` and `/booking/demo` will track and reflect the changes.
+
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

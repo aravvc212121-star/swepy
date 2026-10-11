@@ -328,6 +328,13 @@
     "version": "Version {{version}}",
     "gettingLocation": "Getting your location...",
     "detectingArea": "Detecting area...",
-    "unknownArea": "Unknown area"
+    "unknownArea": "Unknown area",
+    "geoDenied": "Location permission denied. Please allow location access in your browser settings to go online and receive requests.",
+    "keepScreenOpen": "Keep this screen open so your location keeps updating.",
+    "navigate": "Navigate in Google Maps",
+    "locatingHelper": "Locating your helper...",
+    "locationUnavailable": "Helper's location is unavailable right now",
+    "updatedSecondsAgo": "Updated {{seconds}}s ago",
+    "approximate": "approximate"
   }
 }

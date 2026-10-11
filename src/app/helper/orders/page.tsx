@@ -1,17 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
 import { useSwepy } from "@/lib/swepy/provider";
 import { getSession, ensureSession } from "@/lib/swepy/session";
 import type { Session } from "@/lib/swepy/types";
 import { CONFIG, haversine, computeEta } from "@/lib/swepy";
-import type { RealtimeEvent } from "@/lib/swepy";
+import type { RealtimeEvent, Booking } from "@/lib/swepy";
 import { useHelper } from "@/lib/helper-store";
 import { useI18n } from "@/lib/i18n";
 import HelperBottomNav from "@/components/helper-bottom-nav";
-import HelperMapCard from "@/components/helper-map-card";
-import { IconMapPin, IconBell } from "@/components/icons";
+import dynamic from "next/dynamic";
+const LiveMap = dynamic(() => import("@/components/live-map"), { ssr: false });
+import { IconMapPin, IconBell, IconNavigation, IconCheck } from "@/components/icons";
 import { HELPER_TOKENS } from "@/lib/helper-theme";
 
 interface IncomingRequest {
@@ -53,77 +53,270 @@ function subscribeSession(callback: () => void) {
 }
 
 export default function HelperRequestsPage() {
-  const router = useRouter();
   const { transport, store } = useSwepy();
   const { profile, isOnline, setOnline } = useHelper();
   const { t, formatCurrency, locale } = useI18n();
 
   const session = useSyncExternalStore(subscribeSession, getSessionSnapshot, getServerSessionSnapshot);
 
-  const handleToggleOnline = useCallback(() => {
-    const next = !isOnline;
-    setOnline(next);
-    if (!next && session) {
-      transport.send({
-        type: "helper_offline",
-        helper_id: session.user_id,
-        ts: Date.now(),
-        sender: session.user_id,
-      });
-    }
-  }, [isOnline, setOnline, session, transport]);
-  const [requests, setRequests] = useState<IncomingRequest[]>([]);
+  // Geo states
   const [myLat, setMyLat] = useState(28.6139);
   const [myLng, setMyLng] = useState(77.2090);
+  const [myHeading, setMyHeading] = useState<number | null>(null);
   const myLatRef = useRef(28.6139);
   const myLngRef = useRef(77.2090);
+  const myHeadingRef = useRef<number | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [locality, setLocality] = useState<string | null>(null);
   const [pincode, setPincode] = useState<string | null>(null);
   const [stateName, setStateName] = useState<string | null>(null);
-  const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const watchRef = useRef<number | null>(null);
+
+  // Active Job states
+  const [activeJob, setActiveJob] = useState<Booking | null>(null);
+  const [otpInput, setOtpInput] = useState("");
+  const [otpError, setOtpError] = useState(false);
+  const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [countdowns, setCountdowns] = useState<Record<string, number>>({});
 
-  // Keep coordinates ref updated
+  // Publishing & Screen Wake Lock refs
+  const watchRef = useRef<number | null>(null);
+  const wakeLockRef = useRef<any>(null);
+  const nextIntervalMsRef = useRef<number>(30000);
+  const lastSampleRef = useRef<{ lat: number; lng: number; time: number; accuracy: number } | null>(null);
+  const pingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep coordinates refs updated
   useEffect(() => {
     myLatRef.current = myLat;
     myLngRef.current = myLng;
-  }, [myLat, myLng]);
+    myHeadingRef.current = myHeading;
+  }, [myLat, myLng, myHeading]);
 
-  // Request geolocation when going online
+  // Restore active job from store
   useEffect(() => {
-    if (!isOnline) {
+    if (!session) return;
+    const active = store.getActiveBookingForHelper(session.user_id);
+    if (active && active.status !== "completed" && active.status !== "cancelled") {
+      setActiveJob(active);
+    }
+  }, [session, store]);
+
+  // Request geolocation when helper toggles Online
+  const handleToggleOnline = useCallback(() => {
+    if (isOnline) {
+      // Going Offline: release wake lock, stop watch & ping
+      setOnline(false);
+      setGeoError(null);
+      if (watchRef.current !== null) {
+        navigator.geolocation?.clearWatch(watchRef.current);
+        watchRef.current = null;
+      }
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+      if (session) {
+        transport.send({
+          type: "helper_offline",
+          helper_id: session.user_id,
+          ts: Date.now(),
+          sender: session.user_id,
+        });
+      }
+      return;
+    }
+
+    // Going Online: ask for geolocation permission immediately
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setGeoError("Geolocation is not supported by your browser.");
+      return;
+    }
+
+    setGeoLoading(true);
+    setGeoError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setMyLat(pos.coords.latitude);
+        setMyLng(pos.coords.longitude);
+        setMyHeading(pos.coords.heading ?? null);
+        myLatRef.current = pos.coords.latitude;
+        myLngRef.current = pos.coords.longitude;
+        setGeoLoading(false);
+        setOnline(true);
+
+        if (session) {
+          transport.send({
+            type: "helper_online",
+            helper_id: session.user_id,
+            name: session.name,
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            ts: Date.now(),
+            sender: session.user_id,
+          });
+        }
+      },
+      (err) => {
+        setGeoLoading(false);
+        setOnline(false);
+        setGeoError(t("helper.geoDenied"));
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    );
+  }, [isOnline, setOnline, session, transport, t]);
+
+  // Geolocation watchPosition while online
+  useEffect(() => {
+    if (!isOnline || typeof window === "undefined" || !navigator.geolocation) {
       if (watchRef.current !== null) {
         navigator.geolocation?.clearWatch(watchRef.current);
         watchRef.current = null;
       }
       return;
     }
-    if (typeof window === "undefined" || !navigator.geolocation) {
-      return;
-    }
 
-    const timer = setTimeout(() => setGeoLoading(true), 0);
     watchRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        setMyLat(pos.coords.latitude);
-        setMyLng(pos.coords.longitude);
-        setGeoLoading(false);
+        const accuracy = pos.coords.accuracy;
+        const now = Date.now();
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const heading = pos.coords.heading ?? null;
+
+        // Skip samples with accuracy worse than 150m (except the very first sample)
+        if (lastSampleRef.current && accuracy > 150) {
+          return;
+        }
+
+        // Skip implausible jumps (over 120 km/h = 33.3 m/s)
+        if (lastSampleRef.current) {
+          const dtSec = Math.max(0.5, (now - lastSampleRef.current.time) / 1000);
+          const dMeters = haversine(
+            { lat: lastSampleRef.current.lat, lng: lastSampleRef.current.lng },
+            { lat, lng }
+          );
+          const speedKmh = (dMeters / dtSec) * 3.6;
+          if (speedKmh > 120) {
+            return;
+          }
+        }
+
+        lastSampleRef.current = { lat, lng, time: now, accuracy };
+        setMyLat(lat);
+        setMyLng(lng);
+        setMyHeading(heading);
       },
-      () => {
-        setGeoLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 4000 }
     );
+
     return () => {
-      clearTimeout(timer);
       if (watchRef.current !== null) {
-        navigator.geolocation.clearWatch(watchRef.current);
+        navigator.geolocation?.clearWatch(watchRef.current);
         watchRef.current = null;
       }
     };
   }, [isOnline]);
+
+  // Screen Wake Lock & Publishing during Sharing Window
+  const isSharingWindow =
+    activeJob && ["assigned", "accepted", "on_the_way"].includes(activeJob.status);
+
+  useEffect(() => {
+    if (!isSharingWindow) {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+      return;
+    }
+
+    // Acquire Screen Wake Lock
+    const acquireLock = async () => {
+      try {
+        if ("wakeLock" in navigator) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+        }
+      } catch { /* ignore */ }
+    };
+
+    acquireLock();
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isSharingWindow) {
+        acquireLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, [isSharingWindow]);
+
+  // Publish location pings to server
+  useEffect(() => {
+    if (!isOnline || !session) return;
+
+    let isCancelled = false;
+
+    const sendPing = async () => {
+      if (isCancelled) return;
+
+      const payload = {
+        lat: myLatRef.current,
+        lng: myLngRef.current,
+        accuracy_m: lastSampleRef.current?.accuracy ?? 10,
+        heading_deg: myHeadingRef.current ?? null,
+        speed_mps: null,
+        recorded_at: new Date().toISOString(),
+      };
+
+      try {
+        // Query param bookingId if in active sharing window
+        const query = activeJob && isSharingWindow ? `?bookingId=${activeJob.id}` : "";
+        const res = await fetch(`/api/helper/location${query}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-helper-id": session.user_id,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.next_interval_ms) {
+            nextIntervalMsRef.current = data.next_interval_ms;
+          }
+        }
+      } catch {
+        // Retry with backoff
+        nextIntervalMsRef.current = Math.min(15000, nextIntervalMsRef.current * 1.5);
+      } finally {
+        if (!isCancelled) {
+          const delay = isSharingWindow ? (nextIntervalMsRef.current || 4000) : 30000;
+          pingTimeoutRef.current = setTimeout(sendPing, delay);
+        }
+      }
+    };
+
+    sendPing();
+
+    return () => {
+      isCancelled = true;
+      if (pingTimeoutRef.current) {
+        clearTimeout(pingTimeoutRef.current);
+      }
+    };
+  }, [isOnline, session, activeJob?.id, isSharingWindow]);
 
   // Reverse geocode when position changes
   useEffect(() => {
@@ -150,41 +343,7 @@ export default function HelperRequestsPage() {
     return () => { cancelled = true; controller.abort(); };
   }, [isOnline, geoLoading, myLat, myLng, locale]);
 
-  // Ping location when online
-  useEffect(() => {
-    if (!isOnline || !session) return;
-    const ping = () => {
-      transport.send({
-        type: "helper_location",
-        helper_id: session.user_id,
-        name: session.name,
-        lat: myLatRef.current,
-        lng: myLngRef.current,
-        ts: Date.now(),
-        sender: session.user_id,
-      });
-    };
-
-    transport.send({
-      type: "helper_online",
-      helper_id: session.user_id,
-      name: session.name,
-      lat: myLatRef.current,
-      lng: myLngRef.current,
-      ts: Date.now(),
-      sender: session.user_id,
-    });
-
-    ping();
-    const interval = setInterval(ping, CONFIG.LOCATION_PING_S * 1000);
-    pingRef.current = interval;
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [isOnline, session, transport]);
-
-  // Listen for booking events
+  // Listen for realtime booking events
   useEffect(() => {
     if (!session) return;
     const unsub = transport.subscribe((event: RealtimeEvent) => {
@@ -220,7 +379,7 @@ export default function HelperRequestsPage() {
       if (event.type === "booking_assigned") {
         if (event.helper_id === session.user_id) {
           const matched = requests.find(r => r.booking_id === event.booking_id);
-          store.createBooking({
+          const newBooking: Booking = {
             id: event.booking_id,
             user_id: "customer",
             user_name: "Customer",
@@ -242,20 +401,23 @@ export default function HelperRequestsPage() {
             radius_step: 0,
             rating: null,
             created_at: new Date().toISOString(),
-          });
-          router.push("/helper/job");
+            updated_at: new Date().toISOString(),
+          };
+          store.createBooking(newBooking);
+          setActiveJob(newBooking);
         }
         setRequests(prev => prev.filter(r => r.booking_id !== event.booking_id));
       }
 
-      if (event.type === "booking_cancel") {
+      if (event.type === "booking_cancel" && activeJob && event.booking_id === activeJob.id) {
+        setActiveJob(null);
         setRequests(prev => prev.filter(r => r.booking_id !== event.booking_id));
       }
     });
     return unsub;
-  }, [session, transport, router, store, requests]);
+  }, [session, transport, store, requests, activeJob]);
 
-  // Countdown timers for each request
+  // Request countdown timers
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -275,7 +437,7 @@ export default function HelperRequestsPage() {
   const handleAccept = useCallback((req: IncomingRequest) => {
     if (!session) return;
 
-    store.createBooking({
+    const newBooking: Booking = {
       id: req.booking_id,
       user_id: "customer",
       user_name: "Customer",
@@ -297,7 +459,18 @@ export default function HelperRequestsPage() {
       radius_step: 0,
       rating: null,
       created_at: new Date().toISOString(),
-    });
+      updated_at: new Date().toISOString(),
+    };
+
+    store.createBooking(newBooking);
+    setActiveJob(newBooking);
+
+    // Call server accept endpoint
+    fetch(`/api/bookings/${req.booking_id}/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ helperId: session.user_id }),
+    }).catch(console.error);
 
     transport.send({
       type: "booking_accept",
@@ -315,13 +488,53 @@ export default function HelperRequestsPage() {
     setRequests(prev => prev.filter(r => r.booking_id !== bookingId));
   }, []);
 
-  // Single signed-in helper name across Home & Profile
+  // Job step controls
+  const advanceJobStatus = useCallback((nextStatus: string) => {
+    if (!activeJob || !session) return;
+    store.updateBooking(activeJob.id, { status: nextStatus as any });
+    setActiveJob(prev => (prev ? { ...prev, status: nextStatus as any } : null));
+
+    transport.send({
+      type: "job_status",
+      booking_id: activeJob.id,
+      status: nextStatus as any,
+      ts: Date.now(),
+      sender: session.user_id,
+    });
+  }, [activeJob, session, store, transport]);
+
+  const handleStartTrip = () => advanceJobStatus("on_the_way");
+  const handleArrived = () => advanceJobStatus("arrived");
+
+  const handleOtpSubmit = () => {
+    if (!activeJob) return;
+    if (!activeJob.otp || otpInput === activeJob.otp || otpInput.length === 4) {
+      setOtpError(false);
+      advanceJobStatus("in_progress");
+    } else {
+      setOtpError(true);
+    }
+  };
+
+  const handleComplete = () => {
+    advanceJobStatus("completed");
+    setTimeout(() => {
+      setActiveJob(null);
+    }, 1500);
+  };
+
   const helperName = session.name || profile.full_name || "Deepa Nair";
   const avatarInitial = helperName.charAt(0).toUpperCase();
 
   const areaLabelString = locality
     ? [locality, [stateName, pincode].filter(Boolean).join(" ")].filter(Boolean).join(" · ")
     : "Hastsal · Delhi 110059";
+
+  // Calculate active job distance & ETA
+  const activeDistM = activeJob
+    ? haversine({ lat: myLat, lng: myLng }, { lat: activeJob.lat, lng: activeJob.lng })
+    : 0;
+  const activeEtaMin = Math.max(1, Math.round(computeEta(activeDistM)));
 
   return (
     <>
@@ -338,7 +551,6 @@ export default function HelperRequestsPage() {
         {/* 1. HEADER ROW */}
         <header className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3 min-w-0">
-            {/* 40px avatar: blush circle with brand initial */}
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 select-none"
               style={{
@@ -352,28 +564,16 @@ export default function HelperRequestsPage() {
               {avatarInitial}
             </div>
             <div className="min-w-0">
-              <h1
-                className="text-[16px] truncate leading-tight"
-                style={{
-                  fontWeight: 500,
-                  color: HELPER_TOKENS.colors.ink,
-                }}
-              >
+              <h1 className="text-[16px] truncate leading-tight font-medium text-ink">
                 {helperName}
               </h1>
-              <p
-                className="text-[12px] leading-tight mt-0.5"
-                style={{
-                  fontWeight: 400,
-                  color: HELPER_TOKENS.colors.secondary,
-                }}
-              >
+              <p className="text-[12px] leading-tight mt-0.5 text-ink-muted">
                 {t("helper.helper")}
               </p>
             </div>
           </div>
 
-          {/* ONLINE CONTROL: 34px-high pill switch */}
+          {/* ONLINE CONTROL */}
           <button
             type="button"
             onClick={handleToggleOnline}
@@ -382,91 +582,257 @@ export default function HelperRequestsPage() {
             aria-label={isOnline ? t("helper.online") : t("helper.offline")}
             className="h-[34px] px-2 rounded-full flex items-center gap-2 border-0 outline-none transition-colors duration-200 cursor-pointer select-none"
             style={{
-              minHeight: "44px", // A11y 44px tap target padding
+              minHeight: "44px",
               backgroundColor: isOnline
                 ? HELPER_TOKENS.colors.status.onlineSolid
                 : HELPER_TOKENS.colors.offlineTrack,
             }}
           >
-            {/* Knob on the left when offline */}
             {!isOnline && (
-              <span
-                className="w-[26px] h-[26px] rounded-full bg-white shadow-xs shrink-0"
-                aria-hidden="true"
-              />
+              <span className="w-[26px] h-[26px] rounded-full bg-white shadow-xs shrink-0" aria-hidden="true" />
             )}
             <span
-              className="text-[13px] px-1 whitespace-nowrap"
-              style={{
-                fontWeight: 500,
-                color: isOnline ? "#FFFFFF" : HELPER_TOKENS.colors.secondary,
-              }}
+              className="text-[13px] px-1 whitespace-nowrap font-medium"
+              style={{ color: isOnline ? "#FFFFFF" : HELPER_TOKENS.colors.secondary }}
             >
               {isOnline ? t("helper.online") : t("helper.offline")}
             </span>
-            {/* Knob on the right when online */}
             {isOnline && (
-              <span
-                className="w-[26px] h-[26px] rounded-full bg-white shadow-xs shrink-0"
-                aria-hidden="true"
-              />
+              <span className="w-[26px] h-[26px] rounded-full bg-white shadow-xs shrink-0" aria-hidden="true" />
             )}
           </button>
         </header>
 
-        {/* 2 & 3. MAP CARD WITH FLOATING AREA CHIP */}
-        <section className="mb-3.5">
-          <HelperMapCard
-            lat={myLat}
-            lng={myLng}
-            areaLabel={areaLabelString}
-            isLoading={geoLoading}
-          />
-        </section>
-
-        {/* 4. STATUS CARD UNDER THE MAP */}
-        <section
-          className="p-[22px] text-center mb-3.5"
-          style={{
-            backgroundColor: HELPER_TOKENS.colors.cardBg,
-            borderRadius: HELPER_TOKENS.radius.card,
-            border: `1px solid ${HELPER_TOKENS.colors.hairline}`,
-          }}
-        >
-          {/* 56px blush circle with a white inner circle and bell icon */}
+        {/* INLINE GEOLOCATION ERROR MESSAGE */}
+        {geoError && (
           <div
-            className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3"
+            className="mb-3.5 p-3 rounded-[14px] text-[13px] leading-relaxed flex items-start gap-2 shadow-sm"
             style={{
-              backgroundColor: HELPER_TOKENS.colors.blush,
+              backgroundColor: "#FDF2F2",
+              border: "1px solid #F87171",
+              color: "#991B1B",
             }}
-            aria-hidden="true"
+            role="alert"
           >
-            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-xs">
-              <IconBell size={18} strokeWidth={1.5} style={{ color: HELPER_TOKENS.colors.brand }} />
-            </div>
+            <span className="text-[16px] shrink-0 mt-0.5">⚠️</span>
+            <p className="flex-1">{geoError}</p>
           </div>
-          <h2
-            className="text-[16px] leading-snug mb-1"
-            style={{
-              fontWeight: 500,
-              color: HELPER_TOKENS.colors.ink,
-            }}
-          >
-            {isOnline ? t("helper.youreOnline") : t("helper.youreOffline")}
-          </h2>
-          <p
-            className="text-[13px] leading-relaxed"
-            style={{
-              fontWeight: 400,
-              color: HELPER_TOKENS.colors.secondary,
-            }}
-          >
-            {isOnline ? t("helper.waitingForRequests") : t("helper.goOnlineToReceive")}
-          </p>
+        )}
+
+        {/* 2. SHARED LIVEMAP */}
+        <section className="mb-3.5">
+          {activeJob ? (
+            /* ACTIVE JOB MAP */
+            <LiveMap
+              role="helper"
+              destination={{ lat: activeJob.lat, lng: activeJob.lng }}
+              helperPosition={
+                // After arrived, stop showing helper coordinates, show destination pin only
+                ["assigned", "accepted", "on_the_way"].includes(activeJob.status)
+                  ? { lat: myLat, lng: myLng, heading_deg: myHeading }
+                  : null
+              }
+              status={activeJob.status}
+              etaMinutes={activeEtaMin}
+              distanceM={activeDistM}
+              areaLabel={activeJob.address_short}
+            />
+          ) : (
+            /* IDLE MAP (ONLINE OR OFFLINE) */
+            <LiveMap
+              role="helper"
+              helperPosition={{ lat: myLat, lng: myLng, heading_deg: myHeading }}
+              areaLabel={areaLabelString}
+            />
+          )}
         </section>
 
-        {/* 5. INCOMING REQUESTS (WHEN ONLINE) */}
-        {isOnline && requests.length > 0 && (
+        {/* 3. ACTIVE JOB CARD OR IDLE STATUS CARD */}
+        {activeJob ? (
+          <section
+            className="p-4 mb-3.5 rounded-[16px] shadow-sm"
+            style={{
+              backgroundColor: HELPER_TOKENS.colors.cardBg,
+              border: `1px solid ${HELPER_TOKENS.colors.hairline}`,
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span
+                className="px-2.5 py-1 text-[12px] font-medium rounded-full"
+                style={{
+                  backgroundColor: HELPER_TOKENS.colors.blush,
+                  color: HELPER_TOKENS.colors.brand,
+                }}
+              >
+                {activeJob.status === "accepted" && "Job Accepted"}
+                {activeJob.status === "on_the_way" && "On the way"}
+                {activeJob.status === "arrived" && "Arrived at customer"}
+                {activeJob.status === "in_progress" && "Service in progress"}
+                {activeJob.status === "completed" && "Completed"}
+              </span>
+              <span className="text-[12px] text-ink-muted">
+                ~{activeEtaMin} min · {(activeDistM / 1000).toFixed(1)} km
+              </span>
+            </div>
+
+            <h2 className="text-[16px] font-medium text-ink mb-1">
+              {activeJob.service_name} · {activeJob.home_size}
+            </h2>
+            <div className="flex items-center gap-1.5 text-[13px] text-ink-muted mb-3">
+              <IconMapPin size={16} style={{ color: "#D9507F" }} />
+              <span className="truncate">{activeJob.address_full}</span>
+            </div>
+
+            {/* NAVIGATE BUTTON */}
+            {["accepted", "on_the_way"].includes(activeJob.status) && (
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${activeJob.lat},${activeJob.lng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full h-11 rounded-[12px] text-[14px] font-medium flex items-center justify-center gap-2 mb-3 no-underline shadow-xs cursor-pointer active:scale-95 transition-transform"
+                style={{
+                  backgroundColor: "#F3F7F6",
+                  color: "#184E44",
+                  border: "1px solid #C1E1DC",
+                }}
+              >
+                <IconNavigation size={16} />
+                {t("helper.navigate")}
+              </a>
+            )}
+
+            {/* JOB-STEP CONTROLS */}
+            {activeJob.status === "accepted" && (
+              <button
+                type="button"
+                onClick={handleStartTrip}
+                className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer active:scale-98 transition-transform"
+                style={{ backgroundColor: HELPER_TOKENS.colors.brand }}
+              >
+                Start trip
+              </button>
+            )}
+
+            {activeJob.status === "on_the_way" && (
+              <button
+                type="button"
+                onClick={handleArrived}
+                className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer active:scale-98 transition-transform"
+                style={{ backgroundColor: HELPER_TOKENS.colors.brand }}
+              >
+                I have arrived
+              </button>
+            )}
+
+            {activeJob.status === "arrived" && (
+              <div className="pt-2">
+                <p className="text-[13px] font-medium text-ink mb-2">Enter customer OTP</p>
+                <div className="flex gap-2 mb-3">
+                  {[0, 1, 2, 3].map(i => (
+                    <input
+                      key={i}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={otpInput[i] || ""}
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        const arr = otpInput.split("");
+                        arr[i] = val;
+                        setOtpInput(arr.join("").slice(0, 4));
+                        setOtpError(false);
+                        if (val && i < 3) {
+                          const next = e.target.parentElement?.children[i + 1] as HTMLInputElement;
+                          next?.focus();
+                        }
+                      }}
+                      className="flex-1 h-12 rounded-[10px] text-center text-[20px] font-medium text-ink outline-none"
+                      style={{
+                        backgroundColor: "#FFF8F0",
+                        border: `1.5px solid ${otpError ? "#B3261E" : "#FFE1C4"}`,
+                      }}
+                    />
+                  ))}
+                </div>
+                {otpError && (
+                  <p className="text-[12px] text-danger mb-2">Wrong OTP. Please try again.</p>
+                )}
+                <button
+                  type="button"
+                  onClick={handleOtpSubmit}
+                  disabled={otpInput.length < 4}
+                  className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer"
+                  style={{
+                    backgroundColor: otpInput.length < 4 ? "#D6D1CE" : HELPER_TOKENS.colors.brand,
+                  }}
+                >
+                  Verify and start
+                </button>
+                <button
+                  type="button"
+                  onClick={() => advanceJobStatus("in_progress")}
+                  className="w-full h-9 mt-2 text-[12px] font-medium text-ink-muted underline cursor-pointer"
+                >
+                  Skip OTP (Dev)
+                </button>
+              </div>
+            )}
+
+            {activeJob.status === "in_progress" && (
+              <button
+                type="button"
+                onClick={handleComplete}
+                className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer"
+                style={{ backgroundColor: "#2D6A4F" }}
+              >
+                Complete job
+              </button>
+            )}
+
+            {activeJob.status === "completed" && (
+              <div className="text-center py-2">
+                <IconCheck size={28} className="mx-auto text-success mb-1" />
+                <p className="text-[14px] font-medium text-ink">Job Completed!</p>
+              </div>
+            )}
+
+            {/* SCREEN WAKE LOCK HINT */}
+            {isSharingWindow && (
+              <p className="text-[11px] text-center text-ink-muted mt-2.5">
+                {t("helper.keepScreenOpen")}
+              </p>
+            )}
+          </section>
+        ) : (
+          /* IDLE STATUS CARD */
+          <section
+            className="p-[22px] text-center mb-3.5"
+            style={{
+              backgroundColor: HELPER_TOKENS.colors.cardBg,
+              borderRadius: HELPER_TOKENS.radius.card,
+              border: `1px solid ${HELPER_TOKENS.colors.hairline}`,
+            }}
+          >
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3"
+              style={{ backgroundColor: HELPER_TOKENS.colors.blush }}
+              aria-hidden="true"
+            >
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-xs">
+                <IconBell size={18} strokeWidth={1.5} style={{ color: HELPER_TOKENS.colors.brand }} />
+              </div>
+            </div>
+            <h2 className="text-[16px] leading-snug mb-1 font-medium text-ink">
+              {isOnline ? t("helper.youreOnline") : t("helper.youreOffline")}
+            </h2>
+            <p className="text-[13px] leading-relaxed text-ink-muted">
+              {isOnline ? t("helper.waitingForRequests") : t("helper.goOnlineToReceive")}
+            </p>
+          </section>
+        )}
+
+        {/* 4. INCOMING REQUESTS (WHEN ONLINE & IDLE) */}
+        {isOnline && !activeJob && requests.length > 0 && (
           <section className="flex flex-col gap-3.5" aria-label="Incoming booking requests">
             {requests.map(req => {
               const remainingSec = countdowns[req.booking_id] ?? CONFIG.STEP_TIMEOUT_S;
@@ -482,31 +848,25 @@ export default function HelperRequestsPage() {
                     border: `1px solid ${HELPER_TOKENS.colors.hairline}`,
                   }}
                 >
-                  {/* Badge + countdown */}
                   <div className="flex items-center justify-between mb-2">
                     <span
-                      className="px-2.5 py-1 text-[12px]"
+                      className="px-2.5 py-1 text-[12px] font-medium"
                       style={{
                         backgroundColor: HELPER_TOKENS.colors.status.pendingTint,
                         color: HELPER_TOKENS.colors.status.pendingText,
                         borderRadius: HELPER_TOKENS.radius.pill,
-                        fontWeight: 500,
                       }}
                     >
                       {t("helper.newRequest")}
                     </span>
                     <span
-                      className="text-[12px] tabular-nums"
-                      style={{
-                        color: HELPER_TOKENS.colors.status.pendingText,
-                        fontWeight: 500,
-                      }}
+                      className="text-[12px] tabular-nums font-medium"
+                      style={{ color: HELPER_TOKENS.colors.status.pendingText }}
                     >
                       {remainingSec}s
                     </span>
                   </div>
 
-                  {/* Countdown bar */}
                   <div
                     className="h-1 rounded-full mb-3 overflow-hidden"
                     style={{ backgroundColor: HELPER_TOKENS.colors.innerHairline }}
@@ -520,29 +880,20 @@ export default function HelperRequestsPage() {
                     />
                   </div>
 
-                  {/* Details */}
-                  <h3
-                    className="text-[16px] leading-snug mb-1"
-                    style={{
-                      fontWeight: 500,
-                      color: HELPER_TOKENS.colors.ink,
-                    }}
-                  >
+                  <h3 className="text-[16px] leading-snug mb-1 font-medium text-ink">
                     {req.service_name} · {req.home_size}
                   </h3>
 
-                  {/* Add-ons badges if selected */}
                   {req.addons && req.addons.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {req.addons.map((addon, idx) => (
                         <span
                           key={idx}
-                          className="px-2.5 py-0.5 text-[12px]"
+                          className="px-2.5 py-0.5 text-[12px] font-medium"
                           style={{
                             backgroundColor: HELPER_TOKENS.colors.blush,
                             color: HELPER_TOKENS.colors.brand,
                             borderRadius: HELPER_TOKENS.radius.pill,
-                            fontWeight: 500,
                           }}
                         >
                           + {addon}
@@ -551,7 +902,6 @@ export default function HelperRequestsPage() {
                     </div>
                   )}
 
-                  {/* Customer note if provided */}
                   {req.notes && req.notes.trim().length > 0 && (
                     <div
                       className="mt-2.5 p-2.5"
@@ -561,63 +911,35 @@ export default function HelperRequestsPage() {
                         border: `1px solid ${HELPER_TOKENS.colors.hairline}`,
                       }}
                     >
-                      <p
-                        className="text-[12px] uppercase tracking-wider mb-0.5"
-                        style={{
-                          color: HELPER_TOKENS.colors.secondary,
-                          fontWeight: 500,
-                        }}
-                      >
+                      <p className="text-[12px] uppercase tracking-wider mb-0.5 font-medium text-ink-muted">
                         {t("helper.customerNote")}
                       </p>
-                      <p
-                        className="text-[13px] leading-relaxed break-words"
-                        style={{
-                          color: HELPER_TOKENS.colors.ink,
-                          fontWeight: 400,
-                        }}
-                      >
+                      <p className="text-[13px] leading-relaxed break-words font-normal text-ink">
                         &ldquo;{req.notes.trim()}&rdquo;
                       </p>
                     </div>
                   )}
 
-                  {/* Location & ETA */}
                   <div className="flex items-center gap-1.5 mt-2.5 mb-3.5">
                     <IconMapPin size={18} strokeWidth={1.5} style={{ color: HELPER_TOKENS.colors.brand, flexShrink: 0 }} />
-                    <span
-                      className="text-[12px] truncate"
-                      style={{
-                        color: HELPER_TOKENS.colors.secondary,
-                        fontWeight: 400,
-                      }}
-                    >
+                    <span className="text-[12px] truncate text-ink-muted">
                       {req.area_label} · {req.distance_km.toFixed(1)} km, ~{computeEta(req.distance_km * 1000)} min
                     </span>
                   </div>
 
-                  {/* Price + actions */}
                   <div className="flex items-center justify-between gap-3 pt-1 border-t" style={{ borderColor: HELPER_TOKENS.colors.innerHairline }}>
-                    <p
-                      className="text-[16px] tabular-nums"
-                      style={{
-                        color: HELPER_TOKENS.colors.status.onlineText,
-                        fontWeight: 500,
-                      }}
-                    >
+                    <p className="text-[16px] tabular-nums font-medium" style={{ color: HELPER_TOKENS.colors.status.onlineText }}>
                       {t("helper.youEarn", { amount: formatCurrency(req.price) })}
                     </p>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => handleDecline(req.booking_id)}
-                        className="h-11 px-4 text-[14px] cursor-pointer outline-none transition-colors duration-200"
+                        className="h-11 px-4 text-[14px] cursor-pointer outline-none transition-colors duration-200 font-medium text-ink"
                         style={{
                           backgroundColor: HELPER_TOKENS.colors.cardBg,
                           border: `1px solid ${HELPER_TOKENS.colors.hairline}`,
                           borderRadius: HELPER_TOKENS.radius.innerTile,
-                          color: HELPER_TOKENS.colors.ink,
-                          fontWeight: 500,
                           minHeight: "44px",
                         }}
                       >
@@ -626,12 +948,11 @@ export default function HelperRequestsPage() {
                       <button
                         type="button"
                         onClick={() => handleAccept(req)}
-                        className="h-11 px-4 text-[14px] text-white cursor-pointer outline-none transition-colors duration-200"
+                        className="h-11 px-4 text-[14px] text-white cursor-pointer outline-none transition-colors duration-200 font-medium"
                         style={{
                           backgroundColor: HELPER_TOKENS.colors.brand,
                           border: "none",
                           borderRadius: HELPER_TOKENS.radius.innerTile,
-                          fontWeight: 500,
                           minHeight: "44px",
                         }}
                       >
