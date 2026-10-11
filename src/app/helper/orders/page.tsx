@@ -144,6 +144,7 @@ export default function HelperRequestsPage() {
 
       if (event.type === "booking_new") {
         const dist = haversine({ lat: myLat, lng: myLng }, { lat: event.user_lat, lng: event.user_lng });
+        if (dist > event.radius_m) return;
         setRequests(prev => {
           if (prev.some(r => r.booking_id === event.booking_id)) return prev;
           return [...prev, {

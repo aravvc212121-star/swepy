@@ -55,8 +55,17 @@ async function reverseGeocode(lat: number, lng: number): Promise<{ address: stri
   }
 }
 
+const DEFAULT_GEO: GeoState = { status: "idle", lat: null, lng: null, address: null, pincode: null };
+
 export function GeoProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<GeoState>(() => loadGeo());
+  const [state, setState] = useState<GeoState>(DEFAULT_GEO);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setState(JSON.parse(raw) as GeoState);
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     if (state.status !== "idle") saveGeo(state);

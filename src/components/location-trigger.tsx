@@ -42,12 +42,13 @@ export default function LocationTrigger() {
         type="button"
         onClick={() => setSheetOpen(true)}
         data-pressable=""
-        className="flex items-center gap-2 mt-2 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 rounded-[8px] min-h-[44px] px-2 -ml-2 no-select"
+        className="flex items-center gap-2 mt-0 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 rounded-[8px] min-h-[44px] px-2 -ml-2 no-select"
         style={{ outlineColor: "#F6B21A" }}
         aria-label={t("location.deliveryLocation").replace("{{address}}", displayText)}
+        suppressHydrationWarning
       >
         <IconMapPin size={16} className="text-white shrink-0" />
-        <span className="text-[13px] truncate" style={{ color: "rgba(255,255,255,0.85)" }}>
+        <span className="text-[13px] truncate" style={{ color: "rgba(255,255,255,0.85)" }} suppressHydrationWarning>
           {displayText}
         </span>
         <IconChevronDown size={14} className="text-white/50 shrink-0" />

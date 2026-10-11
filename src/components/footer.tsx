@@ -102,7 +102,7 @@ export default function Footer() {
       className="rounded-t-[20px] px-5 pt-7 w-full mx-auto"
       style={{ 
         backgroundColor: "var(--footer-bg)", 
-        paddingBottom: "calc(20px + env(safe-area-inset-bottom, 8px) + 96px)" // base + nav bar height
+        paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))"
       }}
     >
       <FooterWordmark />

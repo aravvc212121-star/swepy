@@ -37,7 +37,7 @@ export default function LaunchScreen() {
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center"
       style={{
-        backgroundColor: "#B3225A",
+        backgroundColor: "#b3295b",
         opacity: fading ? 0 : 1,
         transition: "opacity 200ms ease-out",
       }}

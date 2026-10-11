@@ -127,7 +127,7 @@ export default function PwaProvider() {
             onClick={handleUpdate}
             data-pressable=""
             className="text-[13px] font-medium px-3 py-1.5 rounded-[8px] min-h-[44px] flex items-center"
-            style={{ backgroundColor: "#B3225A" }}
+            style={{ backgroundColor: "#b3295b" }}
           >
             Refresh
           </button>
@@ -158,7 +158,7 @@ export default function PwaProvider() {
             onClick={handleInstall}
             data-pressable=""
             className="text-[12px] font-medium px-3 py-2 rounded-[8px] text-white shrink-0 min-h-[44px] flex items-center"
-            style={{ backgroundColor: "#B3225A" }}
+            style={{ backgroundColor: "#b3295b" }}
           >
             Install
           </button>
@@ -184,7 +184,7 @@ export default function PwaProvider() {
           />
           <div
             className="fixed bottom-0 left-1/2 -translate-x-1/2 z-50 max-w-[430px] w-full rounded-t-[20px] p-5"
-            style={{ backgroundColor: "#B3225A", paddingBottom: "calc(20px + env(safe-area-inset-bottom, 8px))" }}
+            style={{ backgroundColor: "#b3295b", paddingBottom: "calc(20px + env(safe-area-inset-bottom, 8px))" }}
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[17px] font-medium text-white">
@@ -204,7 +204,7 @@ export default function PwaProvider() {
                 <div className="flex items-center gap-3">
                   <span
                     className="w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-medium text-white shrink-0"
-                    style={{ backgroundColor: "#B3225A" }}
+                    style={{ backgroundColor: "#b3295b" }}
                   >
                     1
                   </span>
@@ -217,7 +217,7 @@ export default function PwaProvider() {
                 <div className="flex items-center gap-3">
                   <span
                     className="w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-medium text-white shrink-0"
-                    style={{ backgroundColor: "#B3225A" }}
+                    style={{ backgroundColor: "#b3295b" }}
                   >
                     2
                   </span>

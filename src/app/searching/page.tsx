@@ -176,6 +176,7 @@ export default function SearchingPage() {
       user_lng: userLng,
       ts: Date.now(),
       sender: session.user_id,
+      radius_m: CONFIG.RADIUS_STEPS_M[0],
     });
 
     // Start countdown timer with radius expansion
@@ -208,6 +209,7 @@ export default function SearchingPage() {
             user_lng: userLng,
             ts: Date.now(),
             sender: session.user_id,
+            radius_m: CONFIG.RADIUS_STEPS_M[currentStep],
           });
 
           transport.send({

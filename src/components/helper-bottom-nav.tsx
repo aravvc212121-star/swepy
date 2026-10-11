@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { IconClipboardList, IconUser } from "@/components/icons";
+import { useScrollNav } from "@/lib/use-scroll-nav";
 
 function getActive(pathname: string) {
   if (pathname.startsWith("/helper/job")) return "/helper/orders";
@@ -16,6 +17,7 @@ function getActive(pathname: string) {
 export default function HelperBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const isVisible = useScrollNav();
   const active = getActive(pathname);
   const isHome = active === "/helper/orders";
   const isProfile = active === "/helper/profile";
@@ -27,9 +29,17 @@ export default function HelperBottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-[999] flex justify-center"
-      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      className="fixed bottom-0 left-0 right-0 z-[999] flex justify-center pointer-events-none no-select"
+      style={{
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        transform: isVisible
+          ? "translate3d(0, 0, 0)"
+          : "translate3d(0, calc(100% + 32px), 0)",
+        transition: "transform 480ms cubic-bezier(0.22, 1, 0.36, 1)",
+        willChange: "transform",
+      }}
       aria-label="Helper navigation"
+      aria-hidden={!isVisible}
     >
       <div
         className="w-full max-w-[430px] flex items-center"
@@ -39,6 +49,8 @@ export default function HelperBottomNav() {
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           borderTop: "0.5px solid var(--surface-border)",
+          boxShadow: "0 -4px 20px rgba(0, 0, 0, 0.06)",
+          pointerEvents: isVisible ? "auto" : "none",
         }}
       >
         {/* Home */}

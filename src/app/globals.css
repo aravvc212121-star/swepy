@@ -60,7 +60,7 @@
   --footer-text: #FBE3EC;
   --footer-copyright: #F8C9DA;
 
-  /* Nav capsule */
+  /* Nav capsule — translucent surface with blur */
   --nav-glass: rgba(255, 255, 255, 0.55);
   --nav-text: #6B7280;
   --nav-text-active: #1F2937;
@@ -123,7 +123,7 @@
   --footer-copyright: #F8C9DA;
 
   /* Nav capsule */
-  --nav-glass: rgba(54, 50, 52, 0.25);
+  --nav-glass: rgba(28, 28, 30, 0.55);
   --nav-text: rgba(255, 255, 255, 0.55);
   --nav-text-active: #ffffff;
 }
@@ -222,24 +222,6 @@ textarea {
 
 /* ── Home header wash: eased brand rose → app bg ── */
 .home-wash {
-  --brand: var(--brand-rose);
-  --bg: var(--app-bg);
-  padding-bottom: 56px;
-  background: linear-gradient(180deg,
-    var(--brand) 0,
-    var(--brand) calc(100% - 56px),
-    color-mix(in srgb, var(--brand) 95.7%, var(--bg)) calc(100% - 49px),
-    color-mix(in srgb, var(--brand) 84.4%, var(--bg)) calc(100% - 42px),
-    color-mix(in srgb, var(--brand) 68.4%, var(--bg)) calc(100% - 35px),
-    color-mix(in srgb, var(--brand) 50%, var(--bg)) calc(100% - 28px),
-    color-mix(in srgb, var(--brand) 31.6%, var(--bg)) calc(100% - 21px),
-    color-mix(in srgb, var(--brand) 15.6%, var(--bg)) calc(100% - 14px),
-    color-mix(in srgb, var(--brand) 4.3%, var(--bg)) calc(100% - 7px),
-    var(--bg) 100%
-  );
-}
-
-.dark .home-wash {
   background: var(--brand-rose);
   padding-bottom: 24px;
   border-bottom-left-radius: 24px;
@@ -281,4 +263,15 @@ textarea {
 .nav-icon-pop {
   animation: navIconPop 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
 }
+
+/* ── Hero Book now button ── */
+.hero-book-btn {
+  background-color: #FFFFFF;
+  color: #000000;
+}
+:root.dark .hero-book-btn {
+  background-color: var(--surface-border);
+  color: var(--ink);
+}
+
 

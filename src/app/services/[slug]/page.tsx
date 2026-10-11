@@ -23,7 +23,7 @@ function IncludedList({
   return (
     <div
       className="rounded-[12px] p-3.5 mt-3"
-      style={{ backgroundColor: "#FFF1F6" }}
+      style={{ backgroundColor: "#FFFFFF", border: "0.5px solid var(--surface-border)" }}
     >
       {/* Header */}
       <div className="flex items-center gap-2 mb-2.5">
@@ -70,7 +70,7 @@ function StickyBookBar({ slug }: { slug: string }) {
       className="sticky bottom-0 left-0 right-0 z-10"
       style={{
         backgroundColor: "#FFFFFF",
-        borderTop: "1px solid #F6D9E5",
+        borderTop: "1px solid var(--surface-border)",
         padding: "12px 16px",
         paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
       }}
@@ -152,19 +152,17 @@ export default function ServiceDetailPage({
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
         {/* Hero image card */}
         <div
-          className="rounded-[16px] h-[176px] flex items-center justify-center p-4 overflow-hidden"
+          className="relative w-full h-[200px] rounded-[16px] overflow-hidden"
           style={{ backgroundColor: "#FFFFFF" }}
         >
-          <div className="relative w-full h-full">
-            <Image
-              src={service.detailImage || service.image}
-              alt={service.name}
-              fill
-              className="object-contain"
-              sizes="(max-width: 430px) 90vw, 400px"
-              priority
-            />
-          </div>
+          <Image
+            src={service.detailImage || service.image}
+            alt={service.name}
+            fill
+            className="object-cover"
+            sizes="(max-width: 430px) 100vw, 400px"
+            priority
+          />
         </div>
 
         {/* Title */}

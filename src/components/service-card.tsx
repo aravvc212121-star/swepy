@@ -49,8 +49,8 @@ interface ServiceCardProps {
   href?: string;
   /** Whether this card is above the fold (eager loading) */
   priority?: boolean;
-  /** Whether the card is styled for the dark wash header */
-  variant?: "default" | "hero";
+  /** Whether the card is styled for the dark wash header, or alternate white */
+  variant?: "default" | "hero" | "white";
 }
 
 /**
@@ -70,26 +70,27 @@ export default function ServiceCard({
   const FallbackIcon = iconMap[iconFallback] || IconBroom;
 
   const isHero = variant === "hero";
+  const isWhite = variant === "white";
   
-  // Hero variant uses glass styling to blend with the pink wash
-  const cardBg = isHero ? "rgba(255,255,255,0.18)" : "var(--blush)";
-  const cardBorder = isHero ? "rgba(255,255,255,0.25)" : "var(--blush-border)";
+  // Hero variant uses glass styling, otherwise uses clean white surface styling
+  const cardBg = isHero ? "rgba(255,255,255,0.18)" : "var(--surface)";
+  const cardBorder = isHero ? "rgba(255,255,255,0.25)" : "var(--surface-border)";
   const textColor = isHero ? "#FFFFFF" : "var(--ink)";
   const subtextColor = isHero ? "rgba(255,255,255,0.75)" : "var(--ink-muted)";
   
   const tileHeight = isHero ? "h-20" : "h-24";
-  const tileBg = isHero ? "rgba(255,255,255,0.25)" : "var(--teal-soft)";
+  const tileBg = isHero ? "rgba(255,255,255,0.25)" : "var(--app-bg)";
 
   return (
     <Link
       href={href}
       data-pressable=""
-      className={`flex flex-col gap-2 rounded-[14px] p-2 no-underline outline-none focus-visible:outline-2 focus-visible:outline-offset-2 no-select min-h-[44px]`}
+      className={`flex flex-col gap-2 rounded-[14px] pb-3 overflow-hidden no-underline outline-none focus-visible:outline-2 focus-visible:outline-offset-2 no-select min-h-[44px]`}
       style={{ backgroundColor: cardBg, border: `0.5px solid ${cardBorder}` }}
     >
       {/* Illustration tile */}
       <div
-        className={`relative rounded-[12px] ${tileHeight} flex items-center justify-center overflow-hidden`}
+        className={`relative ${tileHeight} flex items-center justify-center`}
         style={{ backgroundColor: tileBg }}
       >
         {image ? (
@@ -110,26 +111,34 @@ export default function ServiceCard({
       </div>
 
       {/* Label row */}
-      <div className="flex items-end justify-between min-h-[34px] px-1 pb-1">
-        <div className="flex-1 min-w-0">
-          <p
-            className={`text-[13px] font-medium leading-[1.3] line-clamp-2`}
-            style={{ color: textColor }}
-          >
-            {title}
-          </p>
-          {subtitle && (
-            <p className="text-[11px] leading-snug mt-0.5" style={{ color: subtextColor }}>
-              {subtitle}
+      <div className="flex flex-col flex-1 px-3 pb-0 justify-between">
+        <div className="flex items-start justify-between min-h-[34px]">
+          <div className="flex-1 min-w-0">
+            <p
+              className={`text-[13px] font-medium leading-[1.3] line-clamp-2`}
+              style={{ color: textColor }}
+            >
+              {title}
             </p>
-          )}
-          {price && (
-            <p className="text-[11px] leading-snug mt-0.5" style={{ color: textColor }}>
-              {price}
-            </p>
-          )}
+            {subtitle && (
+              <p className="text-[11px] leading-snug mt-0.5" style={{ color: subtextColor }}>
+                {subtitle}
+              </p>
+            )}
+            {price && (
+              <p className="text-[11px] leading-snug mt-1 font-medium" style={{ color: textColor }}>
+                {price}
+              </p>
+            )}
+          </div>
+          {!isHero && <IconArrowRight size={16} className="shrink-0 ml-1 mt-0.5" style={{ color: textColor }} />}
         </div>
-        <IconArrowRight size={16} className="shrink-0 ml-1" style={{ color: textColor }} />
+        
+        {isHero && (
+          <div className="hero-book-btn mt-3 mb-1 w-full h-[30px] rounded-[8px] flex items-center justify-center text-[11px] font-bold tracking-wide uppercase shadow-sm">
+            Book now
+          </div>
+        )}
       </div>
     </Link>
   );

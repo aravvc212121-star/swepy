@@ -21,7 +21,7 @@ export default function OfflinePage() {
       <button
         onClick={() => location.reload()}
         className="mt-6 px-8 py-3 text-white text-[14px] font-medium rounded-[12px]"
-        style={{ backgroundColor: "#B3225A", minHeight: 46 }}
+        style={{ backgroundColor: "#b3295b", minHeight: 46 }}
       >
         Try again
       </button>

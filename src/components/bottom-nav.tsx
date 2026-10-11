@@ -6,6 +6,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { IconHome, IconClipboardList, IconNavigation, IconClock } from "./icons";
 import { useI18n } from "@/lib/i18n";
+import { useScrollNav } from "@/lib/use-scroll-nav";
 
 /* ── 4 tabs split 2 | center | 2 ── */
 const leftTabs = [
@@ -66,7 +67,7 @@ function NavTab({
         className={isActive ? "scale-[1.12]" : ""}
         onAnimationEnd={(e) => e.currentTarget.classList.remove("nav-icon-pop")}
       >
-        <Icon size={26} strokeWidth={1.35} />
+        <Icon size={22} strokeWidth={1.4} />
       </div>
       <span className="text-[10px] leading-none">{t(labelKey)}</span>
     </Link>
@@ -76,24 +77,40 @@ function NavTab({
 export default function BottomNav() {
   const pathname = usePathname();
   const activeHref = getActiveHref(pathname);
+  const isVisible = useScrollNav();
 
   return (
     <nav
-      className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-20 pointer-events-none no-select"
-      style={{ padding: "8px 16px calc(env(safe-area-inset-bottom, 8px) + 8px)" }}
+      className="fixed bottom-0 left-1/2 w-full max-w-[430px] z-20 pointer-events-none no-select"
+      style={{
+        padding: "6px 16px calc(env(safe-area-inset-bottom, 8px) + 6px)",
+        transform: isVisible
+          ? "translate3d(-50%, 0, 0)"
+          : "translate3d(-50%, calc(100% + 32px), 0)",
+        transition: "transform 480ms cubic-bezier(0.22, 1, 0.36, 1)",
+        willChange: "transform",
+      }}
       aria-label="Main navigation"
+      aria-hidden={!isVisible}
     >
       {/* Outer wrapper — relative so center logo can overflow */}
-      <div className="relative flex items-stretch pointer-events-auto" style={{ height: 64 }}>
+      <div
+        className="relative flex items-stretch"
+        style={{
+          height: 52,
+          pointerEvents: isVisible ? "auto" : "none",
+        }}
+      >
 
-        {/* Glass background — covers full width */}
+        {/* Solid / frosted background — covers full width */}
         <div
-          className="absolute inset-0 rounded-[20px]"
+          className="absolute inset-0 rounded-[18px]"
           style={{
             background: "var(--nav-glass)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
             border: "0.5px solid var(--surface-border)",
+            boxShadow: "0 8px 28px rgba(0, 0, 0, 0.08)",
           }}
         />
 
@@ -110,7 +127,7 @@ export default function BottomNav() {
 
         {/* ── Center logo ── */}
         {/* Spacer so it doesn't collapse */}
-        <div style={{ width: 72, flexShrink: 0 }} />
+        <div style={{ width: 60, flexShrink: 0 }} />
 
         {/* Right 2 tabs */}
         <div className="relative flex flex-1 items-stretch z-10">
@@ -127,38 +144,40 @@ export default function BottomNav() {
         <Link
           href="/"
           aria-label="Swepy Home"
+          tabIndex={isVisible ? 0 : -1}
           className="absolute left-1/2 -translate-x-1/2 no-underline no-select focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-rose"
           style={{
-            /* flush with nav top & bottom (nav height = 64px, padding = 0) */
+            /* flush with nav top & bottom (nav height = 52px, padding = 0) */
             top: 0,
             bottom: 0,
-            width: 68,
+            width: 56,
             zIndex: 20,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            pointerEvents: isVisible ? "auto" : "none",
           }}
         >
           {/* Solid background tile — fully opaque, no blur */}
           <div
             style={{
-              width: 68,
+              width: 56,
               height: "100%",
               backgroundColor: "var(--brand-rose)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               /* top radius matches capsule, bottom square (flush) */
-              borderRadius: "20px 20px 16px 16px",
+              borderRadius: "18px 18px 14px 14px",
               overflow: "hidden",
             }}
           >
             <Image
               src="/icons/icon-192.png"
               alt="Swepy"
-              width={52}
-              height={52}
-              style={{ borderRadius: 12, objectFit: "cover" }}
+              width={40}
+              height={40}
+              style={{ borderRadius: 10, objectFit: "cover" }}
               priority
             />
           </div>

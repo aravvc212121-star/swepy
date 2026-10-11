@@ -56,7 +56,7 @@ async function main() {
 
   // ── B. Square, fully opaque (iOS) ──
 
-  // Flatten onto solid #B3225A, remove alpha
+  // Flatten onto solid #3D1230, remove alpha
   const flattenedBuf = await sharp(SRC)
     .flatten({ background: { r: 179, g: 34, b: 90 } })
     .removeAlpha()
@@ -78,7 +78,7 @@ async function main() {
 
   // ── C. Maskable versions (Android safe zone) ──
 
-  // Scale the flattened artwork to 70% of canvas, centered on #B3225A
+  // Scale the flattened artwork to 70% of canvas, centered on #3D1230
   for (const s of [192, 512]) {
     const artworkSize = Math.round(s * 0.7);
     const artwork = await sharp(flattenedBuf)
@@ -87,7 +87,7 @@ async function main() {
       .png()
       .toBuffer();
 
-    // Create #B3225A canvas
+    // Create #3D1230 canvas
     const canvas = sharp({
       create: {
         width: s,

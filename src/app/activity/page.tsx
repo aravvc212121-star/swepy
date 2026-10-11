@@ -93,10 +93,11 @@ export default function ActivityPage() {
                           </>
                         ) : (
                           <>
-                            <div className="w-5 h-5 rounded-full flex items-center justify-center bg-surface-border">
-                              <IconSearch size={12} className="text-ink-muted" strokeWidth={2.5} />
+                            <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "var(--brand-rose)", opacity: 0.1, position: "absolute" }} />
+                            <div className="w-5 h-5 rounded-full flex items-center justify-center">
+                              <IconSearch size={12} className="text-brand-rose" strokeWidth={2.5} />
                             </div>
-                            <span className="text-[12px] font-medium text-ink-muted truncate">
+                            <span className="text-[12px] font-medium text-brand-rose truncate">
                               {t("activity.viewService")}
                             </span>
                           </>

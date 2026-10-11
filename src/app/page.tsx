@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import AppShell from "@/components/app-shell";
 import BottomNav from "@/components/bottom-nav";
 import Footer from "@/components/footer";
@@ -21,6 +22,16 @@ import { useI18n } from "@/lib/i18n";
 
 export default function HomePage() {
   const { t } = useI18n();
+  const washRef = useRef<HTMLDivElement>(null);
+
+  const scrollToServices = () => {
+    if (washRef.current) {
+      const washTop = washRef.current.offsetTop;
+      const washHeight = washRef.current.offsetHeight;
+      const targetY = washTop + washHeight + 4;
+      window.scrollTo({ top: targetY, behavior: "smooth" });
+    }
+  };
 
   const trustItems = [
     { icon: IconShieldCheck, label: t("home.idVerified") },
@@ -32,13 +43,16 @@ export default function HomePage() {
     <>
       <AppShell>
         {/* ── Header wash: brand rose fade ── */}
-        <div className="home-wash -mx-4 -mt-4 px-4 pt-4" style={{ paddingTop: "calc(16px + env(safe-area-inset-top, 0px))" }}>
+        <div ref={washRef} className="home-wash relative -mx-4 -mt-4 px-4 pt-4" style={{ paddingTop: "calc(16px + env(safe-area-inset-top, 0px))" }}>
           {/* ── Top bar: wordmark + bell ── */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Wordmark inverted />
-              <span className="text-[16px] font-medium tracking-tight" style={{ color: "rgba(255,255,255,0.9)" }}>
-                {t("home.in10min")}
+              <span
+                className="inline-flex items-center px-2 py-1 rounded-[8px] text-[12px] font-medium"
+                style={{ backgroundColor: "#F5B731", color: "#1F1A24" }}
+              >
+                <IconBolt size={14} className="mr-0.5" /> {t("home.in10min")}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -58,15 +72,9 @@ export default function HomePage() {
           <LocationTrigger />
 
           {/* ── Hero Text ── */}
-          <div className="mt-2 mb-2">
-            <span
-              className="inline-flex items-center px-2 py-1 rounded-[8px] text-[12px] font-medium mb-2"
-              style={{ backgroundColor: "#F5B731", color: "#1F1A24" }}
-            >
-              <IconBolt size={14} className="mr-0.5" /> {t("home.helperBadge")}
-            </span>
+          <div className="mt-0 mb-2">
             <h2
-              className="text-[23px] font-medium leading-[1.25] mb-1 tracking-tighter whitespace-nowrap"
+              className="text-[22px] font-medium leading-[1.25] mb-1 tracking-tighter whitespace-nowrap"
               style={{ color: "#FFFFFF" }}
             >
               {t("home.headline")}
@@ -77,14 +85,14 @@ export default function HomePage() {
           </div>
 
           {/* ── What do you need? ── */}
-          <div className="mt-6 mb-2">
+          <div className="mt-3 mb-2">
             <h3 className="text-[18px] font-medium" style={{ color: "#FFFFFF" }}>{t("home.whatDoYouNeed")}</h3>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <ServiceCard
               slug="minor-clean"
               title={t("home.minorClean")}
-              image="/services/sweeping-and-mopping.jpg"
+              image="/services/pre-party-clean.jpg"
               iconFallback="broom"
               subtitle={t("home.minorDesc")}
               price={t("home.fromPrice")}
@@ -95,7 +103,7 @@ export default function HomePage() {
             <ServiceCard
               slug="major-clean"
               title={t("home.majorClean")}
-              image="/services/bathroom-cleaning.jpg"
+              image="/services/wardrobe-cleaning.jpg"
               iconFallback="sparkles"
               subtitle={t("home.majorDesc")}
               price={t("home.priceByHome")}
@@ -105,21 +113,28 @@ export default function HomePage() {
             />
           </div>
 
-          {/* ── Book a helper button ── */}
-          <div className="mt-5">
-            <a
-              href="/book"
-              data-pressable=""
-              className="flex items-center justify-center w-full h-[48px] rounded-[12px] text-[15px] font-medium no-underline no-select"
-              style={{ backgroundColor: "var(--app-bg)", color: "var(--ink)" }}
+
+          {/* Smooth Sinc-like Bulge "Services Included" */}
+          <button
+            type="button"
+            onClick={scrollToServices}
+            aria-label="Scroll to services included"
+            className="absolute left-1/2 -bottom-[39px] -translate-x-1/2 w-[280px] h-[40px] z-10 flex items-start justify-center pt-[9px] cursor-pointer outline-none no-select"
+          >
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 280 40"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
             >
-              {t("home.bookHelper")}
-            </a>
-          </div>
+              <path d="M0,0 C40,0 45,40 70,40 L210,40 C235,40 240,0 280,0 Z" fill="var(--brand-rose)" />
+            </svg>
+            <span className="relative z-10 text-[15px] font-medium text-white whitespace-nowrap pointer-events-none">Services Included</span>
+          </button>
         </div>
 
         {/* ── Trust row (unchanged, starts on plain bg) ── */}
-        <div className="grid grid-cols-3 gap-3 mt-4">
+        <div className="grid grid-cols-3 gap-3 mt-14">
           {trustItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -133,9 +148,8 @@ export default function HomePage() {
           })}
         </div>
 
-        {/* ── Services included ── */}
-        <SectionTitle>{t("home.servicesIncluded")}</SectionTitle>
-        <div className="grid grid-cols-2 gap-3">
+        {/* ── Services grid ── */}
+        <div className="grid grid-cols-2 gap-3 mt-8">
           {allServices.map((s) => (
             <ServiceCard
               key={s.slug}
@@ -143,6 +157,7 @@ export default function HomePage() {
               title={t(`services.${s.slug}`) !== `services.${s.slug}` ? t(`services.${s.slug}`) : s.name}
               image={s.image}
               href={`/services/${s.slug}`}
+              variant="white"
             />
           ))}
         </div>

@@ -55,7 +55,7 @@ const sheetVars = {
   "--sub": "#6B6270",
   "--div": "#EFE0E6",
   "--ico-bg": "#FCE8F0",
-  "--ico-fg": "#B3225A",
+  "--ico-fg": "#b3295b",
   "--pill-bg": "#FCE8F0",
   "--pill-fg": "#8F1F45",
 } as React.CSSProperties;
@@ -518,7 +518,7 @@ export default function AddressSheet({
                           type="button"
                           onClick={() => handleDelete(addr.id)}
                           className="w-full text-left px-4 py-2 text-[13px] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 min-h-[44px] flex items-center"
-                          style={{ color: "#B3225A", outlineColor: "#F6B21A" }}
+                          style={{ color: "#b3295b", outlineColor: "#F6B21A" }}
                         >
                           Delete
                         </button>

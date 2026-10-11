@@ -241,6 +241,7 @@ export default function TrackingPage() {
       area_label: b.address_short,
       user_lat: b.lat, user_lng: b.lng,
       ts: Date.now(), sender: session.user_id,
+      radius_m: radius,
     });
   }, [session, transport, helpers]);
 

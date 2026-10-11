@@ -68,7 +68,7 @@ export type RealtimeEvent =
   | { type: "helper_online";    helper_id: string; name: string; lat: number; lng: number; ts: number; sender: string }
   | { type: "helper_location";  helper_id: string; lat: number; lng: number; ts: number; sender: string }
   | { type: "helper_offline";   helper_id: string; ts: number; sender: string }
-  | { type: "booking_new";      booking_id: string; service_name: string; home_size: string; price: number; distance_km: number; area_label: string; user_lat: number; user_lng: number; ts: number; sender: string }
+  | { type: "booking_new";      booking_id: string; service_name: string; home_size: string; price: number; distance_km: number; area_label: string; user_lat: number; user_lng: number; ts: number; sender: string; radius_m: number }
   | { type: "booking_expand";   booking_id: string; radius_m: number; ts: number; sender: string }
   | { type: "booking_accept";   booking_id: string; helper_id: string; helper_name: string; lat: number; lng: number; ts: number; sender: string }
   | { type: "booking_assigned"; booking_id: string; helper_id: string; helper_name: string; ts: number; sender: string }
