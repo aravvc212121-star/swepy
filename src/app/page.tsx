@@ -41,7 +41,7 @@ export default function HomePage() {
 
   return (
     <>
-      <AppShell>
+      <AppShell noPaddingBottom>
         {/* ── Header wash: brand rose fade ── */}
         <div ref={washRef} className="home-wash relative -mx-4 -mt-4 px-4 pt-4" style={{ paddingTop: "calc(16px + env(safe-area-inset-top, 0px))" }}>
           {/* ── Top bar: wordmark + bell ── */}
@@ -149,7 +149,7 @@ export default function HomePage() {
         </div>
 
         {/* ── Services grid ── */}
-        <div className="grid grid-cols-2 gap-3 mt-8">
+        <div className="grid grid-cols-2 gap-3 mt-8 pb-6">
           {allServices.map((s) => (
             <ServiceCard
               key={s.slug}

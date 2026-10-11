@@ -27,6 +27,8 @@ function generatePhone(): string {
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
   try {
+    const fromSession = sessionStorage.getItem(STORAGE_KEY);
+    if (fromSession) return JSON.parse(fromSession) as Session;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw) as Session;
   } catch { /* ignore */ }
@@ -41,13 +43,28 @@ export function createSession(role: "user" | "helper", name?: string): Session {
     name: name || (role === "helper" ? DEMO_HELPERS[Math.floor(Math.random() * DEMO_HELPERS.length)] : "Demo User"),
     phone: generatePhone(),
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } catch { /* ignore */ }
   return session;
+}
+
+/** Ensure a session exists with the specified role. */
+export function ensureSession(role: "user" | "helper", name?: string): Session {
+  const existing = getSession();
+  if (existing && existing.role === role) {
+    return existing;
+  }
+  return createSession(role, name);
 }
 
 /** Clear the demo session. */
 export function clearSession(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
+  } catch { /* ignore */ }
 }
 
 /** Get list of demo helper names (for seed / picker UI). */

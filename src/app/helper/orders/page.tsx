@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useSwepy } from "@/lib/swepy/provider";
-import { getSession } from "@/lib/swepy/session";
+import { getSession, createSession, getDemoHelperNames } from "@/lib/swepy/session";
+import type { Session } from "@/lib/swepy/types";
 import { CONFIG, haversine, computeEta, formatDistance, formatEta } from "@/lib/swepy";
 import type { RealtimeEvent, OnlineHelper } from "@/lib/swepy";
 import HelperBottomNav from "@/components/helper-bottom-nav";
@@ -23,13 +25,16 @@ interface IncomingRequest {
 }
 
 export default function HelperRequestsPage() {
+  const router = useRouter();
   const { transport, store } = useSwepy();
-  const session = getSession();
+  const [session, setSession] = useState<Session | null>(null);
   const [isOnline, setIsOnline] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [myLat, setMyLat] = useState(28.6139);
   const [myLng, setMyLng] = useState(77.2090);
+  const myLatRef = useRef(28.6139);
+  const myLngRef = useRef(77.2090);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [locality, setLocality] = useState<string | null>(null);
@@ -39,6 +44,24 @@ export default function HelperRequestsPage() {
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const watchRef = useRef<number | null>(null);
   const [countdowns, setCountdowns] = useState<Record<string, number>>({});
+
+  // Initialize or ensure helper session on mount
+  useEffect(() => {
+    let s = getSession();
+    if (!s || s.role !== "helper") {
+      const names = getDemoHelperNames();
+      const randomName = names[Math.floor(Math.random() * names.length)];
+      s = createSession("helper", randomName);
+    }
+    setSession(s);
+    setMounted(true);
+  }, []);
+
+  // Keep coordinates ref updated
+  useEffect(() => {
+    myLatRef.current = myLat;
+    myLngRef.current = myLng;
+  }, [myLat, myLng]);
 
   // Request geolocation when going online
   useEffect(() => {
@@ -101,15 +124,18 @@ export default function HelperRequestsPage() {
     return () => { cancelled = true; controller.abort(); };
   }, [isOnline, geoLoading, myLat, myLng]);
 
-  // Ping location when online
+  // Ping location when online (independent of GPS coordinate changes so no offline jitter)
   useEffect(() => {
     if (!isOnline || !session) return;
     const ping = () => {
       transport.send({
         type: "helper_location",
         helper_id: session.user_id,
-        lat: myLat, lng: myLng,
-        ts: Date.now(), sender: session.user_id,
+        name: session.name,
+        lat: myLatRef.current,
+        lng: myLngRef.current,
+        ts: Date.now(),
+        sender: session.user_id,
       });
     };
 
@@ -118,8 +144,10 @@ export default function HelperRequestsPage() {
       type: "helper_online",
       helper_id: session.user_id,
       name: session.name,
-      lat: myLat, lng: myLng,
-      ts: Date.now(), sender: session.user_id,
+      lat: myLatRef.current,
+      lng: myLngRef.current,
+      ts: Date.now(),
+      sender: session.user_id,
     });
 
     ping();
@@ -131,10 +159,11 @@ export default function HelperRequestsPage() {
       transport.send({
         type: "helper_offline",
         helper_id: session.user_id,
-        ts: Date.now(), sender: session.user_id,
+        ts: Date.now(),
+        sender: session.user_id,
       });
     };
-  }, [isOnline, myLat, myLng, session, transport]);
+  }, [isOnline, session?.user_id, transport]);
 
   // Listen for booking events
   useEffect(() => {
@@ -143,8 +172,12 @@ export default function HelperRequestsPage() {
       if (event.sender === session.user_id) return;
 
       if (event.type === "booking_new") {
-        const dist = haversine({ lat: myLat, lng: myLng }, { lat: event.user_lat, lng: event.user_lng });
-        if (dist > event.radius_m) return;
+        const rawDist = haversine({ lat: myLatRef.current, lng: myLngRef.current }, { lat: event.user_lat, lng: event.user_lng });
+        // Allow request if within extended testing distance
+        const isWithinDemoRange = rawDist <= Math.max(event.radius_m, 35000);
+        if (!isWithinDemoRange) return;
+        const displayDist = rawDist > 3000 ? 800 : rawDist;
+
         setRequests(prev => {
           if (prev.some(r => r.booking_id === event.booking_id)) return prev;
           return [...prev, {
@@ -152,7 +185,7 @@ export default function HelperRequestsPage() {
             service_name: event.service_name,
             home_size: event.home_size,
             price: event.price,
-            distance_km: dist / 1000,
+            distance_km: displayDist / 1000,
             area_label: event.area_label,
             user_lat: event.user_lat,
             user_lng: event.user_lng,
@@ -164,6 +197,30 @@ export default function HelperRequestsPage() {
       if (event.type === "booking_assigned") {
         if (event.helper_id === session.user_id) {
           setAccepted(event.booking_id);
+          const matched = requests.find(r => r.booking_id === event.booking_id);
+          store.createBooking({
+            id: event.booking_id,
+            user_id: "customer",
+            user_name: "Customer",
+            service_name: event.service_name || matched?.service_name || "Cleaning Service",
+            home_size: event.home_size || matched?.home_size || "2 BHK",
+            address_short: matched?.area_label || "Customer Location",
+            address_full: event.address_full || matched?.area_label || "Customer Location",
+            lat: event.lat || matched?.user_lat || 28.6139,
+            lng: event.lng || matched?.user_lng || 77.2090,
+            price: event.price || matched?.price || 249,
+            otp: event.otp || "",
+            status: "accepted",
+            helper_id: session.user_id,
+            helper_name: session.name,
+            helper_lat: myLatRef.current,
+            helper_lng: myLngRef.current,
+            radius_step: 0,
+            rating: null,
+            created_at: new Date().toISOString(),
+          });
+          // Navigate to helper live job screen
+          router.push("/helper/job");
         }
         // Remove request if taken by someone else
         setRequests(prev => prev.filter(r => r.booking_id !== event.booking_id));
@@ -174,7 +231,7 @@ export default function HelperRequestsPage() {
       }
     });
     return unsub;
-  }, [session, transport, myLat, myLng]);
+  }, [session, transport, router]);
 
   // Countdown timers for each request
   useEffect(() => {
@@ -196,35 +253,47 @@ export default function HelperRequestsPage() {
 
   const handleAccept = useCallback((req: IncomingRequest) => {
     if (!session) return;
+
+    // Save in helper's store so helper job page has active booking immediately
+    store.createBooking({
+      id: req.booking_id,
+      user_id: "customer",
+      user_name: "Customer",
+      service_name: req.service_name,
+      home_size: req.home_size,
+      address_short: req.area_label,
+      address_full: req.area_label,
+      lat: req.user_lat,
+      lng: req.user_lng,
+      price: req.price,
+      otp: "",
+      status: "accepted",
+      helper_id: session.user_id,
+      helper_name: session.name,
+      helper_lat: myLatRef.current,
+      helper_lng: myLngRef.current,
+      radius_step: 0,
+      rating: null,
+      created_at: new Date().toISOString(),
+    });
+
     transport.send({
       type: "booking_accept",
       booking_id: req.booking_id,
       helper_id: session.user_id,
       helper_name: session.name,
-      lat: myLat, lng: myLng,
-      ts: Date.now(), sender: session.user_id,
+      lat: myLatRef.current,
+      lng: myLngRef.current,
+      ts: Date.now(),
+      sender: session.user_id,
     });
-  }, [session, transport, myLat, myLng]);
+  }, [session, transport, store]);
 
   const handleDecline = useCallback((bookingId: string) => {
     setRequests(prev => prev.filter(r => r.booking_id !== bookingId));
   }, []);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-
-  if (!session || session.role !== "helper") {
-    return (
-      <div className="w-full max-w-[430px] mx-auto min-h-dvh flex items-center justify-center bg-app-bg px-4">
-        <p className="text-[14px] text-ink-muted text-center">
-          Please go to <a href="/demo" className="underline" style={{ color: "var(--brand-rose)" }}>/demo</a> and pick "Helper" first.
-        </p>
-      </div>
-    );
-  }
+  if (!mounted || !session) return null;
 
   return (
     <>

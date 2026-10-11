@@ -6,7 +6,8 @@ import { IconX } from "@/components/icons";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { useSwepy } from "@/lib/swepy/provider";
-import { getSession } from "@/lib/swepy/session";
+import { getSession, ensureSession } from "@/lib/swepy/session";
+import type { Session } from "@/lib/swepy/types";
 import { CONFIG, generateOtp, haversine } from "@/lib/swepy";
 import type { RealtimeEvent, OnlineHelper, Booking as SwepyBooking } from "@/lib/swepy";
 import { useGeo } from "@/lib/geo-store";
@@ -16,7 +17,7 @@ export default function SearchingPage() {
   const router = useRouter();
   const { t } = useI18n();
   const { store, transport, ready } = useSwepy();
-  const session = getSession();
+  const [session, setSession] = useState<Session | null>(null);
   const geo = useGeo();
 
   const [radius, setRadius] = useState(1);
@@ -29,6 +30,55 @@ export default function SearchingPage() {
 
   const searchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bookingRef = useRef<SwepyBooking | null>(null);
+
+  // Ensure customer session on mount
+  useEffect(() => {
+    const s = ensureSession("user", "Demo User");
+    setSession(s);
+  }, []);
+
+  // Fetch all currently active helpers from the server immediately on mount
+  useEffect(() => {
+    fetch('/api/messages')
+      .then(res => res.json())
+      .then(data => {
+        if (data.activeHelpers && data.activeHelpers.length > 0) {
+          setHelpers(prev => {
+            const next = new Map(prev);
+            data.activeHelpers.forEach((h: any) => {
+              next.set(h.helper_id, {
+                helper_id: h.helper_id,
+                name: h.name || "Helper",
+                lat: h.lat,
+                lng: h.lng,
+                last_ping: h.last_ping || Date.now(),
+              });
+            });
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Prune helpers older than 35s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const cutoff = Date.now() - 35000;
+      setHelpers(prev => {
+        let changed = false;
+        const next = new Map(prev);
+        for (const [id, h] of next.entries()) {
+          if (h.last_ping < cutoff) {
+            next.delete(id);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // On mount: check for an existing active booking first
   useEffect(() => {
@@ -44,7 +94,7 @@ export default function SearchingPage() {
     }
   }, [ready, session, store, router]);
 
-  // Listen for helper location pings
+  // Listen for helper location pings and acceptance
   useEffect(() => {
     if (!ready || !session) return;
     const unsub = transport.subscribe((event: RealtimeEvent) => {
@@ -55,9 +105,10 @@ export default function SearchingPage() {
           const next = new Map(prev);
           next.set(event.helper_id, {
             helper_id: event.helper_id,
-            name: "name" in event ? event.name : prev.get(event.helper_id)?.name || "Helper",
-            lat: event.lat, lng: event.lng,
-            last_ping: event.ts,
+            name: "name" in event && event.name ? event.name : prev.get(event.helper_id)?.name || "Helper",
+            lat: event.lat,
+            lng: event.lng,
+            last_ping: event.ts || Date.now(),
           });
           return next;
         });
@@ -79,24 +130,36 @@ export default function SearchingPage() {
           helper_name: event.helper_name,
           helper_lat: event.lat,
           helper_lng: event.lng,
-        });
+        }) || {
+          ...b,
+          status: "accepted" as const,
+          helper_id: event.helper_id,
+          helper_name: event.helper_name,
+          helper_lat: event.lat,
+          helper_lng: event.lng,
+        };
 
-        if (updated) {
-          bookingRef.current = updated;
-          // Broadcast assigned
-          transport.send({
-            type: "booking_assigned",
-            booking_id: b.id,
-            helper_id: event.helper_id,
-            helper_name: event.helper_name,
-            ts: Date.now(),
-            sender: session.user_id,
-          });
-          // Stop timer
-          if (searchTimerRef.current) { clearInterval(searchTimerRef.current); searchTimerRef.current = null; }
-          // Navigate to tracking page
-          router.replace(`/booking/${b.id}`);
-        }
+        bookingRef.current = updated;
+        // Broadcast assigned to lock in the match
+        transport.send({
+          type: "booking_assigned",
+          booking_id: b.id,
+          helper_id: event.helper_id,
+          helper_name: event.helper_name,
+          otp: b.otp,
+          address_full: b.address_full,
+          service_name: b.service_name,
+          home_size: b.home_size,
+          price: b.price,
+          lat: b.lat,
+          lng: b.lng,
+          ts: Date.now(),
+          sender: session.user_id,
+        });
+        // Stop timer
+        if (searchTimerRef.current) { clearInterval(searchTimerRef.current); searchTimerRef.current = null; }
+        // Navigate to tracking page
+        router.replace(`/booking/${b.id}`);
       }
     });
     return unsub;

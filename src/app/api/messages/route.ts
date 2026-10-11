@@ -57,6 +57,27 @@ export async function POST(req: NextRequest) {
   }
 }
 
+function extractActiveHelpers(messages: any[]): any[] {
+  const helpersMap = new Map<string, any>();
+  for (const m of messages) {
+    const p = m.payload || m;
+    if (!p || !p.helper_id) continue;
+    if (p.type === 'helper_offline') {
+      helpersMap.delete(p.helper_id);
+    } else if (p.type === 'helper_online' || p.type === 'helper_location') {
+      const existing = helpersMap.get(p.helper_id);
+      helpersMap.set(p.helper_id, {
+        helper_id: p.helper_id,
+        name: p.name || existing?.name || 'Helper',
+        lat: p.lat,
+        lng: p.lng,
+        last_ping: p.ts || Date.now(),
+      });
+    }
+  }
+  return Array.from(helpersMap.values());
+}
+
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
@@ -85,6 +106,14 @@ export async function GET(req: NextRequest) {
         `;
       }
 
+      const recentRows = await sql`
+        SELECT payload, created_at as ts 
+        FROM demo_messages 
+        WHERE created_at > NOW() - INTERVAL '45 seconds'
+        ORDER BY created_at ASC
+      `;
+      const activeHelpers = extractActiveHelpers(recentRows);
+
       let nextSince = serverNow;
       if (rows.length > 0) {
         nextSince = new Date(rows[rows.length - 1].ts).toISOString();
@@ -94,24 +123,29 @@ export async function GET(req: NextRequest) {
 
       return NextResponse.json({ 
         events: rows.map((r: any) => r.payload),
-        nextSince
+        nextSince,
+        activeHelpers,
       });
     } catch {
       // Fallback to in-memory if DB is temporarily unreachable
       const serverNow = new Date().toISOString();
+      const thirtySecsAgo = new Date(Date.now() - 45 * 1000).toISOString();
       let rows = memoryMessages;
       if (sinceDecoded) {
         rows = memoryMessages.filter((m: any) => m.ts > sinceDecoded);
       } else {
-        const thirtySecsAgo = new Date(Date.now() - 45 * 1000).toISOString();
         rows = memoryMessages.filter((m: any) => m.ts > thirtySecsAgo);
       }
+
+      const recentMem = memoryMessages.filter((m: any) => m.ts > thirtySecsAgo);
+      const activeHelpers = extractActiveHelpers(recentMem);
 
       let nextSince = rows.length > 0 ? rows[rows.length - 1].ts : (sinceDecoded || serverNow);
 
       return NextResponse.json({ 
         events: rows.map((r: any) => r.payload),
-        nextSince
+        nextSince,
+        activeHelpers,
       });
     }
   } catch (err: any) {

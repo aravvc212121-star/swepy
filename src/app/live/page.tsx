@@ -65,7 +65,7 @@ export default function TrackingPage() {
           const next = new Map(prev);
           next.set(event.helper_id, {
             helper_id: event.helper_id,
-            name: "name" in event ? event.name : prev.get(event.helper_id)?.name || "Helper",
+            name: ("name" in event && event.name) ? event.name : prev.get(event.helper_id)?.name || "Helper",
             lat: event.lat, lng: event.lng,
             last_ping: event.ts,
           });

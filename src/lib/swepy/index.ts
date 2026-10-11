@@ -3,7 +3,7 @@
 export { CONFIG } from "./config";
 export { type BookingStatus, canTransition, transition, isActive, isTerminal } from "./status";
 export type { Session, LatLng, OnlineHelper, Booking, Earning, RealtimeEvent } from "./types";
-export { getSession, createSession, clearSession, getDemoHelperNames } from "./session";
+export { getSession, createSession, ensureSession, clearSession, getDemoHelperNames } from "./session";
 export type { SwepyStore } from "./store";
 export { createBrowserStore } from "./store-browser";
 export type { SwepyTransport, ConnectionStatus, EventHandler, Unsubscribe } from "./transport";

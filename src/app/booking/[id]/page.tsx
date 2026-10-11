@@ -273,7 +273,7 @@ export default function BookedPage() {
   const params = useParams();
   const router = useRouter();
   const { store, transport, ready } = useSwepy();
-  const session = getSession();
+  const [session, setSession] = useState<any>(null);
 
   const bookingId = params.id as string;
 
@@ -286,12 +286,29 @@ export default function BookedPage() {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [rating, setRating] = useState(0);
 
+  // Initialize session
+  useEffect(() => {
+    setSession(getSession());
+  }, []);
+
   // Load booking from store or API
   useEffect(() => {
     if (!ready) return;
 
+    // 1. Try local store first (where searching page created or updated it!)
+    const local = store.getBooking(bookingId);
+    if (local) {
+      setBooking(local);
+      setStatus(local.status as TrackingStatus);
+      if (local.helper_lat && local.helper_lng) {
+        const dist = haversine({ lat: local.lat, lng: local.lng }, { lat: local.helper_lat, lng: local.helper_lng });
+        setDistance(dist);
+        setEtaMin(Math.max(1, Math.round(computeEta(dist))));
+      }
+      return;
+    }
+
     if (bookingId === 'demo') {
-      // Keep demo as a fixture using the local store
       const b = store.getBooking(bookingId);
       if (b) {
         setBooking(b);
@@ -303,12 +320,11 @@ export default function BookedPage() {
         }
       }
     } else {
-      // Fetch real data from the API
+      // 2. Fallback to API if not present in local store
       fetch(`/api/bookings/${bookingId}`)
         .then(res => res.json())
         .then(data => {
           if (data.success && data.booking) {
-            // Map DB booking to UI booking structure
             const dbBooking = data.booking;
             setBooking({
               id: dbBooking.id,
@@ -318,22 +334,22 @@ export default function BookedPage() {
               home_size: dbBooking.home_size || 'Home',
               address_short: 'Address',
               address_full: 'Full Address',
-              lat: 12.9716, // Use default or parse from address_snapshot
-              lng: 77.5946,
+              lat: 28.6139,
+              lng: 77.2090,
               price: dbBooking.price_paise / 100,
               otp: dbBooking.start_code || '0000',
               status: dbBooking.status,
               helper_id: dbBooking.helper_id,
               helper_name: dbBooking.helper_id ? 'Helper' : null,
-              helper_lat: 12.9720,
-              helper_lng: 77.5950,
+              helper_lat: 28.6145,
+              helper_lng: 77.2100,
               radius_step: dbBooking.dispatch_wave,
               rating: null,
               created_at: dbBooking.created_at,
               updated_at: dbBooking.updated_at || dbBooking.created_at,
             });
             setStatus(dbBooking.status as TrackingStatus);
-            setDistance(0.5); // Mock distance since DB doesn't track live location yet
+            setDistance(0.5);
             setEtaMin(5);
           }
         })
@@ -343,9 +359,9 @@ export default function BookedPage() {
 
   // Listen for realtime events
   useEffect(() => {
-    if (!ready || !session || !booking) return;
+    if (!ready || !booking) return;
     const unsub = transport.subscribe((event: RealtimeEvent) => {
-      if (event.sender === session.user_id) return;
+      if (session && event.sender === session.user_id) return;
 
       // Helper location pings
       if (event.type === "job_location" && event.booking_id === bookingId) {
@@ -355,10 +371,18 @@ export default function BookedPage() {
           const dist = haversine({ lat: booking.lat, lng: booking.lng }, { lat: event.lat, lng: event.lng });
           setDistance(dist);
           setEtaMin(Math.max(1, Math.round(computeEta(dist))));
-          // Update progress 0..1 based on distance (closer = higher progress)
           const maxDist = 2; // 2 km max
           setHelperProgress(Math.min(0.95, Math.max(0.15, 1 - dist / maxDist)));
         }
+      }
+
+      // Also listen to general helper_location if helper_id matches
+      if (event.type === "helper_location" && booking && event.helper_id === booking.helper_id) {
+        setBooking(prev => prev ? { ...prev, helper_lat: event.lat, helper_lng: event.lng } : prev);
+        store.updateBooking(bookingId, { helper_lat: event.lat, helper_lng: event.lng });
+        const dist = haversine({ lat: booking.lat, lng: booking.lng }, { lat: event.lat, lng: event.lng });
+        setDistance(dist);
+        setEtaMin(Math.max(1, Math.round(computeEta(dist))));
       }
 
       // Job status changes from helper
@@ -369,31 +393,31 @@ export default function BookedPage() {
         store.updateBooking(bookingId, { status: newStatus as any });
       }
 
-      // Helper accepted (for when navigated here from searching before assignment)
-      if (event.type === "booking_accept" && event.booking_id === bookingId && status === "searching") {
-        const updated = store.updateBooking(bookingId, {
+      // Helper assigned or accepted
+      if ((event.type === "booking_assigned" || event.type === "booking_accept") && event.booking_id === bookingId) {
+        setStatus("accepted");
+        setBooking(prev => {
+          if (!prev) return null;
+          const lat = ("lat" in event && typeof event.lat === "number") ? event.lat : prev.helper_lat;
+          const lng = ("lng" in event && typeof event.lng === "number") ? event.lng : prev.helper_lng;
+          return {
+            ...prev,
+            status: "accepted",
+            helper_id: event.helper_id,
+            helper_name: event.helper_name,
+            helper_lat: lat ?? null,
+            helper_lng: lng ?? null,
+          };
+        });
+        store.updateBooking(bookingId, {
           status: "accepted",
           helper_id: event.helper_id,
           helper_name: event.helper_name,
-          helper_lat: event.lat,
-          helper_lng: event.lng,
         });
-        if (updated) {
-          setBooking(updated);
-          setStatus("accepted");
-          transport.send({
-            type: "booking_assigned",
-            booking_id: bookingId,
-            helper_id: event.helper_id,
-            helper_name: event.helper_name,
-            ts: Date.now(),
-            sender: session.user_id,
-          });
-        }
       }
     });
     return unsub;
-  }, [ready, session, transport, store, booking, bookingId, status]);
+  }, [ready, session, transport, store, booking, bookingId]);
 
   // Simulate helper progress for demo
   useEffect(() => {
@@ -539,7 +563,7 @@ export default function BookedPage() {
         {/* ── Map Hero ── */}
         {showMap && (
           <div className="relative">
-            <TrackingMap helperProgress={helperProgress} helperInitial={helperInitial} lat={geo.lat} lng={geo.lng} />
+            <TrackingMap helperProgress={helperProgress} helperInitial={helperInitial} lat={booking.lat || geo.lat || 28.6139} lng={booking.lng || geo.lng || 77.2090} />
             <Link
               href="/"
               className="absolute flex items-center justify-center rounded-full"
