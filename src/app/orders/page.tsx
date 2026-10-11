@@ -6,7 +6,6 @@ import AppShell from "@/components/app-shell";
 import BottomNav from "@/components/bottom-nav";
 import { PageTitle, Card, CardStack } from "@/components/ui";
 import { IconCheck, IconChevronRight, IconClock, IconMapPin, IconSparkles } from "@/components/icons";
-import { demoOrders } from "@/lib/mock-data";
 import { formatINR, formatDate } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { useSwepy } from "@/lib/swepy/provider";
@@ -103,35 +102,6 @@ function OrdersContent() {
       if (isTerminal) {
         hist.push(orderItem);
       } else if (b.scheduled_for) {
-        sch.push(orderItem);
-      } else {
-        ong.push(orderItem);
-      }
-    }
-
-    // 2. Process demo orders (skip any duplicate booking IDs)
-    for (const d of demoOrders) {
-      if (seenBookingIds.has(d.booking.id)) continue;
-
-      const state = d.booking.state;
-      const isTerminal = state === "completed" || state === "rated" || state === "cancelled";
-
-      const orderItem: DisplayOrder = {
-        id: d.id,
-        bookingId: d.booking.id,
-        serviceName: d.booking.service.name,
-        homeSize: d.booking.home_size || "2 BHK",
-        price: d.booking.price_breakdown.total,
-        status: state,
-        helperName: d.booking.helper?.name || null,
-        scheduledFor: d.booking.scheduled_for,
-        createdAt: d.booking.created_at,
-        isReal: false,
-      };
-
-      if (isTerminal) {
-        hist.push(orderItem);
-      } else if (!d.booking.instant && d.booking.scheduled_for) {
         sch.push(orderItem);
       } else {
         ong.push(orderItem);

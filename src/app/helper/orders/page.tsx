@@ -103,8 +103,17 @@ export default function HelperRequestsPage() {
   useEffect(() => {
     if (!session) return;
     const active = store.getActiveBookingForHelper(session.user_id);
-    if (active && active.status !== "completed" && active.status !== "cancelled") {
+    if (
+      active &&
+      active.status !== "completed" &&
+      active.status !== "cancelled" &&
+      active.id !== "demo" &&
+      !active.id.startsWith("demo_") &&
+      active.user_id !== "customer_demo"
+    ) {
       setActiveJob(active);
+    } else {
+      setActiveJob(null);
     }
   }, [session, store]);
 
@@ -766,6 +775,20 @@ export default function HelperRequestsPage() {
     }, 2500);
   };
 
+  const handleCancelJob = useCallback(() => {
+    if (!activeJob) return;
+    store.updateBooking(activeJob.id, { status: "cancelled" as any });
+    if (session) {
+      transport.send({
+        type: "booking_cancel",
+        booking_id: activeJob.id,
+        ts: Date.now(),
+        sender: session.user_id,
+      });
+    }
+    setActiveJob(null);
+  }, [activeJob, session, store, transport]);
+
   const helperName = session.name || profile.full_name || "Deepa Nair";
   const avatarInitial = helperName.charAt(0).toUpperCase();
 
@@ -1094,6 +1117,17 @@ export default function HelperRequestsPage() {
               <p className="text-[11px] text-center text-ink-muted mt-2.5">
                 {t("helper.keepScreenOpen")}
               </p>
+            )}
+
+            {/* OPTION TO DISMISS / CANCEL JOB */}
+            {activeJob.status !== "completed" && (
+              <button
+                type="button"
+                onClick={handleCancelJob}
+                className="w-full mt-2 text-[12px] font-medium text-ink-muted hover:text-red-600 underline cursor-pointer py-1"
+              >
+                Cancel / dismiss job
+              </button>
             )}
           </section>
         ) : (

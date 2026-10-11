@@ -26,7 +26,26 @@ function writeList<T>(key: string, items: T[]): void {
   localStorage.setItem(key, JSON.stringify(items));
 }
 
+function purgeDemoBookings(): void {
+  try {
+    const raw = localStorage.getItem(BOOKINGS_KEY);
+    if (!raw) return;
+    const all = JSON.parse(raw);
+    if (Array.isArray(all)) {
+      const cleaned = all.filter(
+        (b: Booking) => b.id !== "demo" && !b.id.startsWith("demo_") && b.user_id !== "customer_demo"
+      );
+      if (cleaned.length !== all.length) {
+        localStorage.setItem(BOOKINGS_KEY, JSON.stringify(cleaned));
+      }
+    }
+  } catch { /* ignore */ }
+}
+
 export function createBrowserStore(): SwepyStore {
+  // Automatically purge any stale demo bookings on store initialization
+  purgeDemoBookings();
+
   return {
     createBooking(b) {
       const booking: Booking = { ...b, updated_at: now() };
@@ -37,6 +56,7 @@ export function createBrowserStore(): SwepyStore {
     },
 
     getBooking(id) {
+      if (id === "demo" || id.startsWith("demo_")) return null;
       return readList<Booking>(BOOKINGS_KEY).find(b => b.id === id) ?? null;
     },
 
@@ -50,25 +70,49 @@ export function createBrowserStore(): SwepyStore {
     },
 
     listBookingsForUser(userId) {
-      const all = readList<Booking>(BOOKINGS_KEY);
+      const all = readList<Booking>(BOOKINGS_KEY).filter(
+        b => b.id !== "demo" && !b.id.startsWith("demo_") && b.user_id !== "customer_demo"
+      );
       if (!userId || userId === "all" || userId === "customer") return all;
-      return all.filter(b => b.user_id === userId || !b.user_id || b.user_id === "customer" || b.user_id === "customer_demo");
+      return all.filter(b => b.user_id === userId || !b.user_id || b.user_id === "customer");
     },
 
     getAllBookings() {
-      return readList<Booking>(BOOKINGS_KEY);
+      return readList<Booking>(BOOKINGS_KEY).filter(
+        b => b.id !== "demo" && !b.id.startsWith("demo_") && b.user_id !== "customer_demo"
+      );
     },
 
     listBookingsForHelper(helperId) {
-      return readList<Booking>(BOOKINGS_KEY).filter(b => b.helper_id === helperId);
+      return readList<Booking>(BOOKINGS_KEY).filter(
+        b => b.helper_id === helperId && b.id !== "demo" && !b.id.startsWith("demo_")
+      );
     },
 
     getActiveBookingForUser(userId) {
-      return readList<Booking>(BOOKINGS_KEY).find(b => b.user_id === userId && isActive(b.status)) ?? null;
+      return (
+        readList<Booking>(BOOKINGS_KEY).find(
+          b =>
+            (b.user_id === userId || b.user_id === "customer") &&
+            b.id !== "demo" &&
+            !b.id.startsWith("demo_") &&
+            b.user_id !== "customer_demo" &&
+            isActive(b.status)
+        ) ?? null
+      );
     },
 
     getActiveBookingForHelper(helperId) {
-      return readList<Booking>(BOOKINGS_KEY).find(b => b.helper_id === helperId && isActive(b.status)) ?? null;
+      return (
+        readList<Booking>(BOOKINGS_KEY).find(
+          b =>
+            b.helper_id === helperId &&
+            b.id !== "demo" &&
+            !b.id.startsWith("demo_") &&
+            b.user_id !== "customer_demo" &&
+            isActive(b.status)
+        ) ?? null
+      );
     },
 
     appendEarning(e) {

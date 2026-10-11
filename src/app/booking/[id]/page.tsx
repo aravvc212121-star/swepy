@@ -315,49 +315,8 @@ export default function BookedPage() {
       return;
     }
 
-    if (bookingId === "demo") {
-      let b = store.getBooking(bookingId);
-      if (!b) {
-        b = {
-          id: "demo",
-          user_id: "customer_demo",
-          user_name: "Customer",
-          service_name: "Regular Cleaning",
-          home_size: "2 BHK",
-          address_short: "Sector 14, Gurugram",
-          address_full: "Tower B, Sector 14, Gurugram, Haryana",
-          lat: 28.6139,
-          lng: 77.2090,
-          price: 299,
-          otp: "4821",
-          status: "accepted",
-          helper_id: "helper_1",
-          helper_name: "Pooja Sharma",
-          helper_lat: 28.6069,
-          helper_lng: 77.2030,
-          radius_step: 0,
-          rating: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-        store.createBooking(b);
-      }
-      setBooking(b);
-      setStatus(b.status as TrackingStatus);
-      if (b.helper_lat && b.helper_lng) {
-        const dist = haversine({ lat: b.lat, lng: b.lng }, { lat: b.helper_lat, lng: b.helper_lng });
-        setDistance(dist);
-        setEtaMin(Math.max(1, Math.round(computeEta(dist))));
-        setHelperLivePosition({
-          lat: b.helper_lat,
-          lng: b.helper_lng,
-          stale: false,
-        });
-        setIsLocating(false);
-      }
-    } else {
-      // 2. Fallback to API if not present in local store
-      fetch(`/api/bookings/${bookingId}`)
+    // 2. Fallback to API if not present in local store
+    fetch(`/api/bookings/${bookingId}`)
         .then(res => res.json())
         .then(data => {
           if (data.success && data.booking) {
@@ -398,7 +357,6 @@ export default function BookedPage() {
           }
         })
         .catch(console.error);
-    }
   }, [ready, store, bookingId]);
 
   // Listen for realtime events

@@ -11,7 +11,7 @@ import { helperActiveBookings } from "../../../helper/location/route.ts";
 
 const bookingRepo = new BookingRepository();
 
-// In-memory demo booking cache for /booking/demo or local testing
+// In-memory demo booking cache for local testing
 export const demoBookings = new Map<string, {
   id: string;
   customer_id: string;
@@ -21,17 +21,6 @@ export const demoBookings = new Map<string, {
   lng: number;
   address_short?: string;
 }>();
-
-// Initialize standard demo booking
-demoBookings.set("demo", {
-  id: "demo",
-  customer_id: "demo_customer",
-  helper_id: "hlp_demo",
-  status: "on_the_way",
-  lat: 28.6139,
-  lng: 77.2090,
-  address_short: "Hastsal · Delhi 110059",
-});
 
 export async function GET(
   req: NextRequest,

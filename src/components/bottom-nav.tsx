@@ -4,26 +4,23 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { IconHome, IconClipboardList, IconNavigation, IconClock } from "./icons";
+import { IconHome, IconClipboardList, IconNavigation, IconClock, IconUser } from "./icons";
 import { useI18n } from "@/lib/i18n";
 import { useScrollNav } from "@/lib/use-scroll-nav";
+import { useSwepy } from "@/lib/swepy/provider";
 
-/* ── 4 tabs split 2 | center | 2 ── */
+/* ── Left tabs ── */
 const leftTabs = [
   { href: "/", labelKey: "nav.home", icon: IconHome },
   { href: "/activity", labelKey: "nav.activity", icon: IconClock },
 ];
-const rightTabs = [
-  { href: "/orders", labelKey: "nav.booking", icon: IconClipboardList },
-  { href: "/booking/demo", labelKey: "nav.tracking", icon: IconNavigation },
-];
-const allTabs = [...leftTabs, ...rightTabs];
 
-function getActiveHref(pathname: string): string {
+function getActiveHref(pathname: string, dynamicTrackingHref?: string): string {
   if (pathname === "/") return "/";
-  if (pathname.startsWith("/booking")) return "/booking/demo";
+  if (pathname.startsWith("/booking")) return dynamicTrackingHref || "/orders";
   if (pathname.startsWith("/orders")) return "/orders";
   if (pathname.startsWith("/activity")) return "/activity";
+  if (pathname.startsWith("/profile")) return "/profile";
   return pathname;
 }
 
@@ -76,8 +73,34 @@ function NavTab({
 
 export default function BottomNav() {
   const pathname = usePathname();
-  const activeHref = getActiveHref(pathname);
   const isVisible = useScrollNav();
+  const { store, ready } = useSwepy();
+
+  const [activeBookingId, setActiveBookingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!ready || !store) return;
+    try {
+      const active = store.getActiveBookingForUser("customer");
+      if (active && active.id !== "demo" && !active.id.startsWith("demo_")) {
+        setActiveBookingId(active.id);
+      } else {
+        setActiveBookingId(null);
+      }
+    } catch {
+      setActiveBookingId(null);
+    }
+  }, [ready, store, pathname]);
+
+  const dynamicTrackingHref = activeBookingId ? `/booking/${activeBookingId}` : undefined;
+  const activeHref = getActiveHref(pathname, dynamicTrackingHref);
+
+  const rightTabs = [
+    { href: "/orders", labelKey: "nav.booking", icon: IconClipboardList },
+    activeBookingId
+      ? { href: `/booking/${activeBookingId}`, labelKey: "nav.tracking", icon: IconNavigation }
+      : { href: "/profile", labelKey: "nav.profile", icon: IconUser },
+  ];
 
   return (
     <nav

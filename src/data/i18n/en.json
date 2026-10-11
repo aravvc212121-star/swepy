@@ -3,7 +3,8 @@
     "home": "Home",
     "activity": "Activity",
     "booking": "Booking",
-    "tracking": "Tracking"
+    "tracking": "Tracking",
+    "profile": "Profile"
   },
   "home": {
     "in10min": "in 10 minutes",
