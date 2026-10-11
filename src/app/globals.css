@@ -274,4 +274,15 @@ textarea {
   color: var(--ink);
 }
 
+/* ── Nav Logo dark/light swap ── */
+.nav-logo-dark {
+  display: none !important;
+}
+:root.dark .nav-logo-light {
+  display: none !important;
+}
+:root.dark .nav-logo-dark {
+  display: block !important;
+}
+
 

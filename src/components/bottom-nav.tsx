@@ -177,6 +177,16 @@ export default function BottomNav() {
               alt="Swepy"
               width={40}
               height={40}
+              className="nav-logo-light"
+              style={{ borderRadius: 10, objectFit: "cover" }}
+              priority
+            />
+            <Image
+              src="/icons/icon-dark-192.png"
+              alt="Swepy"
+              width={40}
+              height={40}
+              className="nav-logo-dark"
               style={{ borderRadius: 10, objectFit: "cover" }}
               priority
             />

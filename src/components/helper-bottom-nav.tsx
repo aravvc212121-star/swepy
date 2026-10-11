@@ -77,7 +77,8 @@ export default function HelperBottomNav() {
             display: "flex", alignItems: "center", justifyContent: "center",
             borderRadius: 16, overflow: "hidden",
           }}>
-            <Image src="/icons/icon-192.png" alt="Swepy" width={44} height={44} style={{ borderRadius: 10, objectFit: "cover" }} priority />
+            <Image src="/icons/icon-192.png" alt="Swepy" width={44} height={44} className="nav-logo-light" style={{ borderRadius: 10, objectFit: "cover" }} priority />
+            <Image src="/icons/icon-dark-192.png" alt="Swepy" width={44} height={44} className="nav-logo-dark" style={{ borderRadius: 10, objectFit: "cover" }} priority />
           </div>
         </button>
 
