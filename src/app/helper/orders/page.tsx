@@ -17,6 +17,8 @@ interface IncomingRequest {
   service_name: string;
   home_size: string;
   price: number;
+  notes?: string;
+  addons?: string[];
   distance_km: number;
   area_label: string;
   user_lat: number;
@@ -185,6 +187,8 @@ export default function HelperRequestsPage() {
             service_name: event.service_name,
             home_size: event.home_size,
             price: event.price,
+            notes: event.notes,
+            addons: event.addons,
             distance_km: displayDist / 1000,
             area_label: event.area_label,
             user_lat: event.user_lat,
@@ -204,6 +208,8 @@ export default function HelperRequestsPage() {
             user_name: "Customer",
             service_name: event.service_name || matched?.service_name || "Cleaning Service",
             home_size: event.home_size || matched?.home_size || "2 BHK",
+            notes: event.notes || matched?.notes,
+            addons: event.addons || matched?.addons,
             address_short: matched?.area_label || "Customer Location",
             address_full: event.address_full || matched?.area_label || "Customer Location",
             lat: event.lat || matched?.user_lat || 28.6139,
@@ -261,6 +267,8 @@ export default function HelperRequestsPage() {
       user_name: "Customer",
       service_name: req.service_name,
       home_size: req.home_size,
+      notes: req.notes,
+      addons: req.addons,
       address_short: req.area_label,
       address_full: req.area_label,
       lat: req.user_lat,
@@ -403,8 +411,49 @@ export default function HelperRequestsPage() {
                   </div>
 
                   {/* Details */}
-                  <p className="text-[15px] font-medium text-ink">{req.service_name} · {req.home_size}</p>
-                  <div className="flex items-center gap-1.5 mt-1 mb-3">
+                  <p className="text-[15px] font-semibold text-ink leading-snug">{req.service_name} · {req.home_size}</p>
+
+                  {/* Add-ons badges if selected */}
+                  {req.addons && req.addons.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {req.addons.map((addon, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium"
+                          style={{
+                            backgroundColor: "rgba(181, 74, 91, 0.08)",
+                            color: "var(--brand-rose)",
+                            border: "0.5px solid rgba(181, 74, 91, 0.2)",
+                          }}
+                        >
+                          + {addon}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Customer note if provided */}
+                  {req.notes && req.notes.trim().length > 0 && (
+                    <div
+                      className="mt-2.5 rounded-[10px] p-2.5 flex items-start gap-2"
+                      style={{
+                        backgroundColor: "var(--amber-soft)",
+                        border: "0.5px solid var(--amber-border)",
+                      }}
+                    >
+                      <span className="text-[13px] shrink-0 leading-none mt-0.5">📝</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted mb-0.5">
+                          Customer note
+                        </p>
+                        <p className="text-[12px] font-medium text-ink leading-relaxed break-words">
+                          &ldquo;{req.notes.trim()}&rdquo;
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-1.5 mt-2 mb-3">
                     <IconMapPin size={14} style={{ color: "var(--teal)" }} />
                     <span className="text-[12px] text-ink-muted">{req.area_label} · {req.distance_km.toFixed(1)} km, ~{computeEta(req.distance_km * 1000)} min</span>
                   </div>

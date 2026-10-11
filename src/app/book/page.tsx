@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-// This page redirects to the first service (Minor clean) detail page.
-// In production, this would show a service picker or use the selected service.
-export default function BookPage() {
+function BookContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
-    router.replace("/service/svc_minor");
-  }, [router]);
+    const serviceParam = searchParams.get("service") || "";
+    if (serviceParam.includes("major") || serviceParam.includes("deep")) {
+      router.replace("/service/svc_major");
+    } else {
+      router.replace("/service/svc_minor");
+    }
+  }, [router, searchParams]);
 
   return (
     <div className="mobile-frame bg-app-bg min-h-screen flex items-center justify-center">
@@ -19,5 +23,13 @@ export default function BookPage() {
         <p className="text-[13px] text-ink-muted">Loading services...</p>
       </div>
     </div>
+  );
+}
+
+export default function BookPage() {
+  return (
+    <Suspense fallback={null}>
+      <BookContent />
+    </Suspense>
   );
 }

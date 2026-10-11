@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { services, servicePrices, addons } from "@/lib/mock-data";
 import { formatINR, formatHomeSize, cn } from "@/lib/utils";
 import type { HomeSize } from "@/lib/types";
+import { saveOrderDraft } from "@/lib/order-draft";
 import {
   IconArrowLeft,
   IconCheck,
@@ -51,6 +52,7 @@ const addonImages: Record<string, string> = {
 };
 
 export default function ServiceDetailPage() {
+  const router = useRouter();
   const params = useParams();
   const service = services.find((s) => s.id === params.id) || services[0];
   const [selectedSize, setSelectedSize] = useState<HomeSize>("2bhk");
@@ -67,8 +69,6 @@ export default function ServiceDetailPage() {
     (p) => p.service_id === service.id && p.home_size === selectedSize
   );
 
-  if (!price) return null;
-
   const toggleAddon = (id: string) => {
     setSelectedAddons((prev) =>
       prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
@@ -80,7 +80,27 @@ export default function ServiceDetailPage() {
     return sum + (addon?.price || 0);
   }, 0);
 
-  const total = price.price + extensions * price.extension_price + addonsTotal;
+  const total = (price?.price || 249) + extensions * (price?.extension_price || 99) + addonsTotal;
+
+  const handleContinue = () => {
+    if (!price) return;
+    const selectedAddonObjects = addons.filter((a) => selectedAddons.includes(a.id));
+    saveOrderDraft({
+      serviceId: service.id,
+      serviceName: service.name,
+      homeSize: selectedSize,
+      extensions,
+      addonIds: selectedAddons,
+      addonNames: selectedAddonObjects.map((a) => a.name),
+      basePrice: price.price,
+      addonsTotal,
+      extensionsTotal: extensions * price.extension_price,
+      totalPrice: total,
+    });
+    router.push("/checkout");
+  };
+
+  if (!price) return null;
 
   return (
     <div className="bg-app-bg min-h-dvh" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
@@ -280,14 +300,15 @@ export default function ServiceDetailPage() {
           <span className="text-[13px] text-ink-muted">Total</span>
           <span className="text-[18px] font-medium text-ink">{formatINR(total)}</span>
         </div>
-        <Link
-          href="/checkout"
+        <button
+          type="button"
+          onClick={handleContinue}
           data-pressable=""
           className="w-full flex items-center justify-center py-3.5 rounded-[12px] text-[14px] font-medium text-white no-select min-h-[48px]"
           style={{ backgroundColor: "var(--brand-rose)" }}
         >
           Continue to checkout
-        </Link>
+        </button>
       </div>
     </div>
   );

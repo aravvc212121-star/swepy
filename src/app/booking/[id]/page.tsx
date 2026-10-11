@@ -714,6 +714,8 @@ export default function BookedPage() {
                 {[
                   { label: t("booking.service"), value: booking.service_name },
                   { label: t("booking.homeSize"), value: booking.home_size },
+                  ...(booking.addons && booking.addons.length > 0 ? [{ label: "Add-ons", value: booking.addons.join(", ") }] : []),
+                  ...(booking.notes && booking.notes.trim().length > 0 ? [{ label: "Note for helper", value: booking.notes.trim() }] : []),
                   { label: t("booking.when"), value: "Instant" },
                   { label: t("booking.address"), value: booking.address_short },
                 ].map((row, i, arr) => (

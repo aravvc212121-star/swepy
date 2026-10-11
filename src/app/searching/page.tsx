@@ -12,6 +12,8 @@ import { CONFIG, generateOtp, haversine } from "@/lib/swepy";
 import type { RealtimeEvent, OnlineHelper, Booking as SwepyBooking } from "@/lib/swepy";
 import { useGeo } from "@/lib/geo-store";
 import { servicePrices, addons as allAddons } from "@/lib/mock-data";
+import { getOrderDraft } from "@/lib/order-draft";
+import { formatHomeSize } from "@/lib/utils";
 
 export default function SearchingPage() {
   const router = useRouter();
@@ -151,6 +153,8 @@ export default function SearchingPage() {
           service_name: b.service_name,
           home_size: b.home_size,
           price: b.price,
+          notes: b.notes,
+          addons: b.addons,
           lat: b.lat,
           lng: b.lng,
           ts: Date.now(),
@@ -173,20 +177,27 @@ export default function SearchingPage() {
     const userLat = geo.lat || 28.6139;
     const userLng = geo.lng || 77.2090;
 
-    // Use the first service price as demo (Minor clean · 2 BHK)
-    const sp = servicePrices[1]; // minor_clean, 2bhk
+    // Load order draft from selection/checkout
+    const draft = getOrderDraft();
+    const serviceName = draft.serviceName || "Minor clean";
+    const homeSizeLabel = formatHomeSize(draft.homeSize);
+    const priceVal = draft.totalPrice > 0 ? draft.totalPrice : 249;
+    const notesVal = draft.notes?.trim() || "";
+    const addonsList = draft.addonNames && draft.addonNames.length > 0 ? draft.addonNames : [];
 
     const newBooking = store.createBooking({
       id: "bk_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6), // Temp ID until API returns
       user_id: session.user_id,
       user_name: session.name,
-      service_name: "Minor clean",
-      home_size: "2 BHK",
+      service_name: serviceName,
+      home_size: homeSizeLabel,
       address_short: "Sector 18, Noida",
       address_full: "Flat 402, Tower B, Sunrise Heights, Sector 18, Noida",
       lat: userLat,
       lng: userLng,
-      price: sp?.price || 249,
+      price: priceVal,
+      notes: notesVal,
+      addons: addonsList,
       otp,
       status: "searching",
       helper_id: null,
@@ -208,8 +219,8 @@ export default function SearchingPage() {
       body: JSON.stringify({
         customerId: session.user_id,
         addressId: 'addr_priya_home',
-        servicePackageId: 'pkg_minor_2bhk',
-        pricePaise: sp?.price ? sp.price * 100 : 24900,
+        servicePackageId: draft.serviceId || 'pkg_minor_2bhk',
+        pricePaise: priceVal * 100,
         lat: userLat,
         lng: userLng,
         cityId: 'city_bangalore',
@@ -233,6 +244,8 @@ export default function SearchingPage() {
       service_name: newBooking.service_name,
       home_size: newBooking.home_size,
       price: newBooking.price,
+      notes: notesVal,
+      addons: addonsList,
       distance_km: 0,
       area_label: newBooking.address_short,
       user_lat: userLat,
@@ -266,6 +279,8 @@ export default function SearchingPage() {
             service_name: newBooking.service_name,
             home_size: newBooking.home_size,
             price: newBooking.price,
+            notes: notesVal,
+            addons: addonsList,
             distance_km: 0,
             area_label: newBooking.address_short,
             user_lat: userLat,

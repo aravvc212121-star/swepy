@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { demoAddress, servicePrices, addons } from "@/lib/mock-data";
-import { formatINR } from "@/lib/utils";
+import { demoAddress, addons } from "@/lib/mock-data";
+import { formatINR, formatHomeSize } from "@/lib/utils";
 import {
   IconArrowLeft,
   IconBolt,
@@ -16,20 +17,30 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { usePaymentStore, getMethodLabel } from "@/lib/payment-store";
 import PaymentSheet from "@/components/payment-sheet";
+import { getOrderDraft, saveOrderDraft, type OrderDraft } from "@/lib/order-draft";
 
 const ALL_SLOTS = ["7:00 am", "8:00 am", "9:00 am", "10:00 am", "11:00 am", "12:00 pm", "2:00 pm", "3:00 pm", "4:00 pm", "5:00 pm", "6:00 pm", "7:00 pm"];
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export default function CheckoutPage() {
+  const router = useRouter();
   const { t } = useI18n();
+  const [draft, setDraft] = useState<OrderDraft>(() => getOrderDraft());
   const [mode, setMode] = useState<"instant" | "schedule">("instant");
   const [coupon, setCoupon] = useState("");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(() => getOrderDraft().notes || "");
   const [showPaymentSheet, setShowPaymentSheet] = useState(false);
   const payment = usePaymentStore();
   const [selectedDateIdx, setSelectedDateIdx] = useState(0);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+
+  // Sync draft from storage on mount
+  useEffect(() => {
+    const d = getOrderDraft();
+    setDraft(d);
+    if (d.notes) setNotes(d.notes);
+  }, []);
 
   // Build next 7 days
   const dates = useMemo(() => {
@@ -56,10 +67,27 @@ export default function CheckoutPage() {
     );
   }, [selectedDateIdx]);
 
-  // Mock: Minor clean, 2 BHK, no add-ons
-  const price = servicePrices[1];
-  const addonItem = addons[0];
-  const total = price.price + addonItem.price;
+  // Selected addons list from draft
+  const selectedAddonItems = useMemo(() => {
+    return addons.filter((a) => draft.addonIds.includes(a.id));
+  }, [draft.addonIds]);
+
+  const total = draft.totalPrice;
+  const hasPaymentMethod = payment.selected !== null;
+
+  const handleNotesChange = (val: string) => {
+    setNotes(val);
+    saveOrderDraft({ notes: val });
+  };
+
+  const handlePlaceOrder = () => {
+    if (!hasPaymentMethod) {
+      setShowPaymentSheet(true);
+      return;
+    }
+    saveOrderDraft({ notes });
+    router.push("/searching");
+  };
 
   return (
     <div className="bg-app-bg min-h-dvh" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
@@ -198,7 +226,7 @@ export default function CheckoutPage() {
           <input
             type="text"
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) => handleNotesChange(e.target.value)}
             placeholder={t("checkout.notesPlaceholder")}
             className="w-full text-ink bg-transparent outline-none placeholder:text-ink-muted/50"
             style={{ fontSize: "16px" }}
@@ -228,13 +256,23 @@ export default function CheckoutPage() {
           <p className="text-[13px] font-medium text-ink mb-3">{t("checkout.priceBreakdown")}</p>
           <div className="space-y-2">
             <div className="flex justify-between text-[13px]">
-              <span className="text-ink-muted">Minor clean · 2 BHK · 60 min</span>
-              <span className="text-ink">{formatINR(price.price)}</span>
+              <span className="text-ink-muted">
+                {draft.serviceName} · {formatHomeSize(draft.homeSize)} · {60 + draft.extensions * 30} min
+              </span>
+              <span className="text-ink">{formatINR(draft.basePrice)}</span>
             </div>
-            <div className="flex justify-between text-[13px]">
-              <span className="text-ink-muted">Washroom × 1</span>
-              <span className="text-ink">{formatINR(addonItem.price)}</span>
-            </div>
+            {selectedAddonItems.map((addon) => (
+              <div key={addon.id} className="flex justify-between text-[13px]">
+                <span className="text-ink-muted">{addon.name} × 1</span>
+                <span className="text-ink">{formatINR(addon.price)}</span>
+              </div>
+            ))}
+            {draft.extensions > 0 && (
+              <div className="flex justify-between text-[13px]">
+                <span className="text-ink-muted">Extra time (+{draft.extensions * 30} min)</span>
+                <span className="text-ink">{formatINR(draft.extensionsTotal)}</span>
+              </div>
+            )}
             <div className="pt-2 mt-1 flex justify-between text-[14px]" style={{ borderTop: "0.5px solid var(--surface-border)" }}>
               <span className="font-medium text-ink">{t("checkout.total")}</span>
               <span className="font-medium text-ink">{formatINR(total)}</span>
@@ -247,24 +285,38 @@ export default function CheckoutPage() {
       <div className="px-4 mt-4">
         <p className="text-[13px] font-medium text-ink mb-3">{t("checkout.payWith")}</p>
         <button
+          type="button"
           onClick={() => setShowPaymentSheet(true)}
           className="w-full flex items-center justify-between py-3 px-4 rounded-[14px]"
-          style={{ backgroundColor: "var(--surface)", border: "0.5px solid var(--surface-border)" }}
+          style={{
+            backgroundColor: "var(--surface)",
+            border: `0.5px solid ${!hasPaymentMethod ? "var(--brand-rose)" : "var(--surface-border)"}`,
+          }}
         >
-          <span className="text-[14px] font-medium text-ink">{getMethodLabel(payment, payment.selected)}</span>
+          <div className="flex items-center gap-2">
+            {!hasPaymentMethod && <span className="w-2 h-2 rounded-full bg-brand-rose animate-pulse" />}
+            <span className="text-[14px] font-medium" style={{ color: hasPaymentMethod ? "var(--ink)" : "var(--brand-rose)" }}>
+              {getMethodLabel(payment, payment.selected)}
+            </span>
+          </div>
           <IconChevronRight size={18} className="text-ink-muted" />
         </button>
       </div>
 
       {/* Fixed bottom CTA */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-surface px-4 py-3 z-10" style={{ borderTop: "0.5px solid var(--surface-border)", paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))" }}>
-        <Link
-          href="/searching"
-          className="w-full flex items-center justify-center py-3.5 rounded-[12px] text-[14px] font-medium text-white"
-          style={{ backgroundColor: "var(--brand-rose)" }}
+        <button
+          type="button"
+          onClick={handlePlaceOrder}
+          data-pressable=""
+          className="w-full flex items-center justify-center py-3.5 rounded-[12px] text-[14px] font-medium text-white no-select transition-all"
+          style={{
+            backgroundColor: "var(--brand-rose)",
+            opacity: hasPaymentMethod ? 1 : 0.92,
+          }}
         >
-          {t("checkout.bookHelper")} · {formatINR(total)}
-        </Link>
+          {hasPaymentMethod ? `${t("checkout.bookHelper")} · ${formatINR(total)}` : `Choose how to pay to order · ${formatINR(total)}`}
+        </button>
       </div>
 
       {/* Payment Sheet */}

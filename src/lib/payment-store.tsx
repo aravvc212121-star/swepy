@@ -43,14 +43,17 @@ const STORAGE_KEY = "swepy_payment";
 const SEED: PaymentState = {
   savedUpis: [],
   savedCards: [],
-  selected: { type: "upi_provider", provider: "gpay" },
+  selected: null,
 };
 
 function loadState(): PaymentState {
   if (typeof window === "undefined") return SEED;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...SEED, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...SEED, ...parsed };
+    }
   } catch { /* ignore */ }
   return SEED;
 }
@@ -99,7 +102,7 @@ export function getMethodLabel(
   state: PaymentState,
   sel: PaymentMethodSelection | null
 ): string {
-  if (!sel) return "UPI, cards";
+  if (!sel) return "Select payment method";
   switch (sel.type) {
     case "upi_provider": {
       const labels: Record<UpiProvider, string> = {
