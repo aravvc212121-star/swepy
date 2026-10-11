@@ -14,6 +14,7 @@ if (typeof window !== "undefined" && typeof (maplibregl as any).setWorkerUrl ===
 import { IconMapPin, IconClock, IconNavigation, IconPlus, IconMinus } from "@/components/icons";
 import { HELPER_TOKENS } from "@/lib/helper-theme";
 import { formatDistance } from "@/lib/utils";
+import { fetchRoadRoute } from "@/lib/swepy/road-router";
 
 export interface LiveMapProps {
   role: "customer" | "helper";
@@ -76,6 +77,34 @@ export default function LiveMap({
   // Follow mode state
   const [followMode, setFollowMode] = useState<boolean>(true);
   const [mapLoaded, setMapLoaded] = useState<boolean>(false);
+  const [internalRoadRoute, setInternalRoadRoute] = useState<[number, number][] | null>(null);
+
+  // Fetch real road route if not supplied or if straight line
+  useEffect(() => {
+    if (!helperPosition || !destination) {
+      setInternalRoadRoute(null);
+      return;
+    }
+
+    // If an external route with real road coordinates (> 2 points and not straight line) exists, use it
+    if (route?.geometry?.coordinates && route.geometry.coordinates.length > 2 && route.source !== "straight_line") {
+      return;
+    }
+
+    let isMounted = true;
+    fetchRoadRoute(
+      { lat: helperPosition.lat, lng: helperPosition.lng },
+      { lat: destination.lat, lng: destination.lng }
+    ).then((res) => {
+      if (isMounted && res.coordinates.length > 1) {
+        setInternalRoadRoute(res.coordinates);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [helperPosition?.lat, helperPosition?.lng, destination?.lat, destination?.lng, route]);
 
   // Initialize MapLibre
   useEffect(() => {
@@ -143,7 +172,7 @@ export default function LiveMap({
           },
           paint: {
             "line-color": "#D9507F",
-            "line-width": 4,
+            "line-width": 4.5,
           },
         });
       }
@@ -177,17 +206,16 @@ export default function LiveMap({
     if (!source) return;
 
     let coords: [number, number][] = [];
-    let isStraightLine = true;
 
-    if (route?.geometry?.coordinates && route.geometry.coordinates.length > 0) {
+    if (route?.geometry?.coordinates && route.geometry.coordinates.length > 2 && route.source !== "straight_line") {
       coords = route.geometry.coordinates;
-      isStraightLine = route.source === "straight_line";
+    } else if (internalRoadRoute && internalRoadRoute.length > 1) {
+      coords = internalRoadRoute;
     } else if (helperPosition && destination) {
       coords = [
         [helperPosition.lng, helperPosition.lat],
         [destination.lng, destination.lat],
       ];
-      isStraightLine = true;
     }
 
     source.setData({
@@ -199,15 +227,10 @@ export default function LiveMap({
       },
     });
 
-    // Configure dashed style for straight-line mode
     if (map.getLayer("route-line")) {
-      if (isStraightLine) {
-        map.setPaintProperty("route-line", "line-dasharray", [2, 2]);
-      } else {
-        map.setPaintProperty("route-line", "line-dasharray", undefined);
-      }
+      map.setPaintProperty("route-line", "line-dasharray", undefined);
     }
-  }, [route, helperPosition, destination, mapLoaded]);
+  }, [route, internalRoadRoute, helperPosition, destination, mapLoaded]);
 
   // Destination Marker
   useEffect(() => {

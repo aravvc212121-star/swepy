@@ -736,16 +736,19 @@ export default function BookedPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-2.5 justify-center">
+                    <div className="flex items-center justify-center gap-3 my-2">
                       {otpDigits.map((digit, i) => (
                         <div
                           key={i}
-                          className="flex items-center justify-center rounded-[12px]"
+                          className="flex items-center justify-center rounded-[14px] shadow-xs select-all"
                           style={{
-                            width: 52, height: 56,
+                            width: "56px",
+                            height: "64px",
                             backgroundColor: C.white,
-                            border: `1px solid ${C.hairline}`,
-                            fontSize: 24, fontWeight: 500, color: C.ink,
+                            border: `2px solid ${C.hairline}`,
+                            fontSize: 26,
+                            fontWeight: 700,
+                            color: C.ink,
                           }}
                         >
                           {digit}

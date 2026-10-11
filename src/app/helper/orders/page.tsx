@@ -11,8 +11,9 @@ import { useI18n } from "@/lib/i18n";
 import HelperBottomNav from "@/components/helper-bottom-nav";
 import dynamic from "next/dynamic";
 const LiveMap = dynamic(() => import("@/components/live-map"), { ssr: false });
-import { IconMapPin, IconBell, IconNavigation, IconCheck } from "@/components/icons";
+import { IconMapPin, IconBell, IconNavigation, IconCheck, IconShieldCheck } from "@/components/icons";
 import { HELPER_TOKENS } from "@/lib/helper-theme";
+import { fetchRoadRoute } from "@/lib/swepy/road-router";
 
 interface IncomingRequest {
   booking_id: string;
@@ -93,6 +94,10 @@ export default function HelperRequestsPage() {
     myHeadingRef.current = myHeading;
   }, [myLat, myLng, myHeading]);
 
+  // Road route waypoints
+  const roadWaypointsRef = useRef<[number, number][]>([]);
+  const roadWaypointIdxRef = useRef<number>(0);
+
   // Restore active job from store
   useEffect(() => {
     if (!session) return;
@@ -101,6 +106,24 @@ export default function HelperRequestsPage() {
       setActiveJob(active);
     }
   }, [session, store]);
+
+  // Pre-fetch road route for active job
+  useEffect(() => {
+    if (!activeJob) {
+      roadWaypointsRef.current = [];
+      roadWaypointIdxRef.current = 0;
+      return;
+    }
+    fetchRoadRoute(
+      { lat: myLatRef.current, lng: myLngRef.current },
+      { lat: activeJob.lat, lng: activeJob.lng }
+    ).then((res) => {
+      if (res.coordinates && res.coordinates.length > 1) {
+        roadWaypointsRef.current = res.coordinates;
+        roadWaypointIdxRef.current = 0;
+      }
+    }).catch(() => {});
+  }, [activeJob?.id]);
 
   // Request geolocation when helper toggles Online
   const handleToggleOnline = useCallback(() => {
@@ -583,7 +606,72 @@ export default function HelperRequestsPage() {
         return;
       }
 
-      // Step towards destination ~5-6% of remaining distance each 2s
+      // Check if road waypoints are available to ride along real roads
+      const waypoints = roadWaypointsRef.current;
+      if (waypoints && waypoints.length > 2) {
+        const step = Math.max(1, Math.min(3, Math.ceil(waypoints.length / 25)));
+        roadWaypointIdxRef.current = Math.min(waypoints.length - 1, roadWaypointIdxRef.current + step);
+        const [nextLng, nextLat] = waypoints[roadWaypointIdxRef.current];
+
+        let headingDeg = myHeadingRef.current ?? 0;
+        if (roadWaypointIdxRef.current < waypoints.length - 1) {
+          const [aheadLng, aheadLat] = waypoints[roadWaypointIdxRef.current + 1];
+          const dY = aheadLat - nextLat;
+          const dX = (aheadLng - nextLng) * Math.cos((nextLat * Math.PI) / 180);
+          headingDeg = Math.round((Math.atan2(dX, dY) * 180) / Math.PI + 360) % 360;
+        }
+
+        setMyLat(nextLat);
+        setMyLng(nextLng);
+        setMyHeading(headingDeg);
+        myLatRef.current = nextLat;
+        myLngRef.current = nextLng;
+        myHeadingRef.current = headingDeg;
+
+        store.updateBooking(activeJob.id, { helper_lat: nextLat, helper_lng: nextLng });
+
+        transport.send({
+          type: "job_location",
+          booking_id: activeJob.id,
+          lat: nextLat,
+          lng: nextLng,
+          heading_deg: headingDeg,
+          speed_mps: 4.5,
+          ts: Date.now(),
+          sender: session.user_id,
+        });
+
+        fetch(`/api/helper/location?bookingId=${activeJob.id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-helper-id": session.user_id,
+          },
+          body: JSON.stringify({
+            lat: nextLat,
+            lng: nextLng,
+            accuracy_m: 5,
+            heading_deg: headingDeg,
+            speed_mps: 4.5,
+            recorded_at: new Date().toISOString(),
+          }),
+        }).catch(() => {});
+
+        if (roadWaypointIdxRef.current >= waypoints.length - 1) {
+          store.updateBooking(activeJob.id, { helper_lat: destLat, helper_lng: destLng, status: "arrived" as any });
+          setActiveJob(prev => (prev ? { ...prev, helper_lat: destLat, helper_lng: destLng, status: "arrived" as any } : null));
+          transport.send({
+            type: "job_status",
+            booking_id: activeJob.id,
+            status: "arrived" as any,
+            ts: Date.now(),
+            sender: session.user_id,
+          });
+        }
+        return;
+      }
+
+      // Fallback: Step towards destination ~5-6% of remaining distance each 2s
       const stepFraction = Math.max(0.04, Math.min(0.08, 35 / distM));
       const nextLat = curLat + (destLat - curLat) * stepFraction;
       const nextLng = curLng + (destLng - curLng) * stepFraction;
@@ -874,43 +962,94 @@ export default function HelperRequestsPage() {
             )}
 
             {activeJob.status === "arrived" && (
-              <div className="pt-2">
-                <p className="text-[13px] font-medium text-ink mb-2">Enter customer OTP</p>
-                <div className="flex gap-2 mb-3">
+              <div className="py-2.5 flex flex-col items-center">
+                <div
+                  className="w-11 h-11 rounded-full flex items-center justify-center mb-2 select-none"
+                  style={{
+                    backgroundColor: HELPER_TOKENS.colors.blush,
+                    color: HELPER_TOKENS.colors.brand,
+                  }}
+                >
+                  <IconShieldCheck size={22} />
+                </div>
+                <h3 className="text-[16px] font-semibold text-ink text-center leading-tight">
+                  Enter Start Code
+                </h3>
+                <p className="text-[13px] text-ink-muted text-center mt-1 mb-3.5 max-w-[280px] leading-snug">
+                  Ask customer for the 4-digit code shown on their tracking screen.
+                </p>
+
+                {/* PROPORTIONAL SCREEN-RATIO OTP BOXES */}
+                <div className="flex items-center justify-center gap-3 w-full my-2">
                   {[0, 1, 2, 3].map(i => (
                     <input
                       key={i}
                       type="text"
                       inputMode="numeric"
+                      pattern="[0-9]*"
                       maxLength={1}
+                      autoComplete="one-time-code"
                       value={otpInput[i] || ""}
                       onChange={e => {
                         const val = e.target.value.replace(/\D/g, "");
                         const arr = otpInput.split("");
                         arr[i] = val;
-                        setOtpInput(arr.join("").slice(0, 4));
+                        const nextOtp = arr.join("").slice(0, 4);
+                        setOtpInput(nextOtp);
                         setOtpError(false);
                         if (val && i < 3) {
                           const next = e.target.parentElement?.children[i + 1] as HTMLInputElement;
                           next?.focus();
                         }
                       }}
-                      className="flex-1 h-12 rounded-[10px] text-center text-[20px] font-medium text-ink outline-none"
+                      onKeyDown={e => {
+                        if (e.key === "Backspace" && !otpInput[i] && i > 0) {
+                          const prev = e.currentTarget.parentElement?.children[i - 1] as HTMLInputElement;
+                          prev?.focus();
+                        }
+                      }}
+                      onPaste={e => {
+                        e.preventDefault();
+                        const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
+                        if (pasted) {
+                          setOtpInput(pasted);
+                          setOtpError(false);
+                          const lastIdx = Math.min(3, pasted.length - 1);
+                          const target = e.currentTarget.parentElement?.children[lastIdx] as HTMLInputElement;
+                          target?.focus();
+                        }
+                      }}
+                      className="text-center text-[26px] font-bold text-ink rounded-[14px] outline-none transition-all duration-150 select-all"
                       style={{
-                        backgroundColor: "#FFF8F0",
-                        border: `1.5px solid ${otpError ? "#B3261E" : "#FFE1C4"}`,
+                        width: "56px",
+                        height: "64px",
+                        backgroundColor: otpError ? "#FEF2F2" : "#FFFFFF",
+                        border: `2px solid ${
+                          otpError
+                            ? "#B3261E"
+                            : otpInput[i]
+                            ? HELPER_TOKENS.colors.brand
+                            : HELPER_TOKENS.colors.hairline
+                        }`,
+                        boxShadow: otpInput[i]
+                          ? "0 2px 8px rgba(217, 80, 127, 0.15)"
+                          : "0 1px 3px rgba(0,0,0,0.04)",
                       }}
                     />
                   ))}
                 </div>
+
                 {otpError && (
-                  <p className="text-[12px] text-danger mb-2">Wrong OTP. Please try again.</p>
+                  <p className="text-[12px] font-medium text-center my-1.5" style={{ color: "#B3261E" }}>
+                    Wrong OTP. Please check with customer.
+                  </p>
                 )}
+
                 <button
                   type="button"
                   onClick={handleOtpSubmit}
                   disabled={otpInput.length < 4}
-                  className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer"
+                  className="w-full h-12 mt-2.5 rounded-[14px] text-[15px] font-medium text-white shadow-sm cursor-pointer transition-transform active:scale-98"
                   style={{
                     backgroundColor: otpInput.length < 4 ? "#D6D1CE" : HELPER_TOKENS.colors.brand,
                   }}
@@ -920,7 +1059,7 @@ export default function HelperRequestsPage() {
                 <button
                   type="button"
                   onClick={() => advanceJobStatus("in_progress")}
-                  className="w-full h-9 mt-2 text-[12px] font-medium text-ink-muted underline cursor-pointer"
+                  className="w-full h-8 mt-1 text-[12px] font-medium text-ink-muted underline cursor-pointer"
                 >
                   Skip OTP (Dev)
                 </button>
