@@ -18,6 +18,8 @@ import { useI18n } from "@/lib/i18n";
 import { usePaymentStore, getMethodLabel } from "@/lib/payment-store";
 import PaymentSheet from "@/components/payment-sheet";
 import { getOrderDraft, saveOrderDraft, type OrderDraft } from "@/lib/order-draft";
+import { useSwepy } from "@/lib/swepy/provider";
+import { generateOtp } from "@/lib/swepy";
 
 const ALL_SLOTS = ["7:00 am", "8:00 am", "9:00 am", "10:00 am", "11:00 am", "12:00 pm", "2:00 pm", "3:00 pm", "4:00 pm", "5:00 pm", "6:00 pm", "7:00 pm"];
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -25,6 +27,7 @@ const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const { store } = useSwepy();
   const { t } = useI18n();
   const [draft, setDraft] = useState<OrderDraft>(() => getOrderDraft());
   const [mode, setMode] = useState<"instant" | "schedule">("instant");
@@ -86,6 +89,38 @@ export default function CheckoutPage() {
       return;
     }
     saveOrderDraft({ notes });
+
+    if (mode === "schedule") {
+      const scheduledDate = dates[selectedDateIdx];
+      const slotStr = selectedSlot || "10:00 am";
+      const scheduledStr = `${scheduledDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} at ${slotStr}`;
+
+      store?.createBooking({
+        id: "bk_sch_" + Date.now(),
+        user_id: "customer",
+        user_name: "Customer",
+        service_name: draft.serviceName || "Minor clean",
+        home_size: formatHomeSize(draft.homeSize),
+        address_short: demoAddress.label,
+        address_full: demoAddress.full_address,
+        lat: 28.6139,
+        lng: 77.2090,
+        price: total,
+        otp: generateOtp(),
+        status: "accepted",
+        scheduled_for: scheduledStr,
+        helper_id: null,
+        helper_name: null,
+        helper_lat: null,
+        helper_lng: null,
+        radius_step: 0,
+        rating: null,
+        created_at: new Date().toISOString(),
+      });
+      router.push("/orders?tab=scheduled");
+      return;
+    }
+
     router.push("/searching");
   };
 

@@ -50,7 +50,13 @@ export function createBrowserStore(): SwepyStore {
     },
 
     listBookingsForUser(userId) {
-      return readList<Booking>(BOOKINGS_KEY).filter(b => b.user_id === userId);
+      const all = readList<Booking>(BOOKINGS_KEY);
+      if (!userId || userId === "all" || userId === "customer") return all;
+      return all.filter(b => b.user_id === userId || !b.user_id || b.user_id === "customer" || b.user_id === "customer_demo");
+    },
+
+    getAllBookings() {
+      return readList<Booking>(BOOKINGS_KEY);
     },
 
     listBookingsForHelper(helperId) {

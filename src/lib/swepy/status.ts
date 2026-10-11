@@ -15,7 +15,7 @@ const TRANSITIONS: Record<BookingStatus, readonly BookingStatus[]> = {
   searching:   ["accepted", "cancelled", "expired"],
   accepted:    ["on_the_way", "cancelled", "searching"],  // searching = helper released
   on_the_way:  ["arrived", "cancelled"],
-  arrived:     ["in_progress"],
+  arrived:     ["in_progress", "completed"],
   in_progress: ["completed"],
   completed:   [],
   cancelled:   [],

@@ -212,11 +212,34 @@ export default function BookedPage() {
   const [isUnavailable, setIsUnavailable] = useState<boolean>(false);
   const [lastUpdatedSec, setLastUpdatedSec] = useState<number | null>(null);
   const [isApproximateEta, setIsApproximateEta] = useState<boolean>(false);
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
   // Initialize session
   useEffect(() => {
     setSession(getSession());
   }, []);
+
+  // Auto-redirect to orders history when completed
+  useEffect(() => {
+    if (status !== "completed") {
+      setRedirectCountdown(null);
+      return;
+    }
+
+    setRedirectCountdown(5);
+    const interval = setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          router.push("/orders?tab=history");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [status, router]);
 
   // Realtime Gateway: subscribe to live tracking API
   useEffect(() => {
@@ -862,13 +885,32 @@ export default function BookedPage() {
                   )}
                 </div>
 
-                <Link
-                  href="/"
-                  className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white flex items-center justify-center no-underline shadow-xs"
-                  style={{ backgroundColor: C.brand }}
-                >
-                  Back to Home
-                </Link>
+                {redirectCountdown !== null && redirectCountdown > 0 && (
+                  <p className="text-[13px] text-ink-muted mb-3.5 font-medium">
+                    Returning to your orders in {redirectCountdown}s...
+                  </p>
+                )}
+
+                <div className="flex flex-col gap-2.5">
+                  <Link
+                    href="/orders?tab=history"
+                    className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white flex items-center justify-center no-underline shadow-xs cursor-pointer active:scale-98 transition-transform"
+                    style={{ backgroundColor: C.brand }}
+                  >
+                    View in Booking History
+                  </Link>
+                  <Link
+                    href="/"
+                    className="w-full h-11 rounded-[12px] text-[14px] font-medium flex items-center justify-center no-underline cursor-pointer active:scale-98 transition-transform"
+                    style={{
+                      backgroundColor: C.white,
+                      color: C.ink,
+                      border: `1px solid ${C.hairline}`,
+                    }}
+                  >
+                    Back to Home
+                  </Link>
+                </div>
               </div>
             )}
 

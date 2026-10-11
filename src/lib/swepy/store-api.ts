@@ -36,6 +36,10 @@ export function createApiStore(): SwepyStore {
       return [];
     },
 
+    getAllBookings() {
+      return [];
+    },
+
     listBookingsForHelper(helperId) {
       return [];
     },

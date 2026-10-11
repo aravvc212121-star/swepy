@@ -21,6 +21,9 @@ export interface SwepyStore {
   /** DB-READY: SELECT * FROM bookings WHERE user_id = $1 ORDER BY created_at DESC */
   listBookingsForUser(userId: string): Booking[];
 
+  /** DB-READY: SELECT * FROM bookings ORDER BY created_at DESC */
+  getAllBookings?(): Booking[];
+
   /** DB-READY: SELECT * FROM bookings WHERE helper_id = $1 ORDER BY created_at DESC */
   listBookingsForHelper(helperId: string): Booking[];
 

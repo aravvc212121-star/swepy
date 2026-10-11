@@ -27,6 +27,7 @@ interface IncomingRequest {
   user_lat: number;
   user_lng: number;
   received_at: number;
+  otp?: string;
 }
 
 const DEFAULT_HELPER_SESSION: Session = {
@@ -395,6 +396,7 @@ export default function HelperRequestsPage() {
             user_lat: event.user_lat,
             user_lng: event.user_lng,
             received_at: Date.now(),
+            otp: event.otp,
           }];
         });
       }
@@ -484,7 +486,7 @@ export default function HelperRequestsPage() {
 
     // Check store for existing booking or fallback OTP
     const existing = store.getBooking(req.booking_id);
-    const bookingOtp = existing?.otp || "4821";
+    const bookingOtp = req.otp || existing?.otp || "4821";
 
     let helperStartLat = myLatRef.current;
     let helperStartLng = myLngRef.current;
@@ -744,10 +746,14 @@ export default function HelperRequestsPage() {
 
   const handleOtpSubmit = () => {
     if (!activeJob) return;
-    const expected = activeJob.otp || "4821";
-    if (otpInput === expected || otpInput === "4821" || otpInput.length === 4) {
+    const storeBooking = store.getBooking(activeJob.id);
+    const expected = activeJob.otp || storeBooking?.otp;
+    if (expected && otpInput === expected) {
       setOtpError(false);
-      advanceJobStatus("in_progress");
+      advanceJobStatus("completed");
+      setTimeout(() => {
+        setActiveJob(null);
+      }, 2500);
     } else {
       setOtpError(true);
     }
@@ -1041,7 +1047,7 @@ export default function HelperRequestsPage() {
 
                 {otpError && (
                   <p className="text-[12px] font-medium text-center my-1.5" style={{ color: "#B3261E" }}>
-                    Wrong OTP. Please check with customer.
+                    Wrong OTP. Please enter the 4-digit code shown on customer's screen.
                   </p>
                 )}
 
@@ -1054,14 +1060,7 @@ export default function HelperRequestsPage() {
                     backgroundColor: otpInput.length < 4 ? "#D6D1CE" : HELPER_TOKENS.colors.brand,
                   }}
                 >
-                  Verify and start
-                </button>
-                <button
-                  type="button"
-                  onClick={() => advanceJobStatus("in_progress")}
-                  className="w-full h-8 mt-1 text-[12px] font-medium text-ink-muted underline cursor-pointer"
-                >
-                  Skip OTP (Dev)
+                  Verify Code & Complete Order
                 </button>
               </div>
             )}
@@ -1070,7 +1069,7 @@ export default function HelperRequestsPage() {
               <button
                 type="button"
                 onClick={handleComplete}
-                className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer"
+                className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer active:scale-98 transition-transform"
                 style={{ backgroundColor: "#2D6A4F" }}
               >
                 Complete job
@@ -1078,9 +1077,15 @@ export default function HelperRequestsPage() {
             )}
 
             {activeJob.status === "completed" && (
-              <div className="text-center py-2">
-                <IconCheck size={28} className="mx-auto text-success mb-1" />
-                <p className="text-[14px] font-medium text-ink">Job Completed!</p>
+              <div className="text-center py-4">
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2"
+                  style={{ backgroundColor: "rgba(45, 106, 79, 0.12)", color: "#2D6A4F" }}
+                >
+                  <IconCheck size={28} strokeWidth={2.5} />
+                </div>
+                <h3 className="text-[16px] font-semibold text-ink">Order Completed! 🎉</h3>
+                <p className="text-[13px] text-ink-muted mt-0.5">Returning to online requests in a moment...</p>
               </div>
             )}
 
