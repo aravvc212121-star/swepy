@@ -535,8 +535,11 @@ export default function HelperRequestsPage() {
       updated_at: new Date().toISOString(),
     };
 
-    store.createBooking(newBooking);
-    setActiveJob(newBooking);
+    const updated = store.updateBooking(req.booking_id, {
+      ...newBooking,
+      status: "accepted",
+    }) || store.createBooking(newBooking);
+    setActiveJob(updated);
 
     // Call server accept endpoint
     fetch(`/api/bookings/${req.booking_id}/accept`, {

@@ -359,6 +359,19 @@ export default function BookedPage() {
         .catch(console.error);
   }, [ready, store, bookingId]);
 
+  // Sync state across tabs if helper completed or updated booking in localStorage
+  useEffect(() => {
+    const handleStorage = () => {
+      const b = store.getBooking(bookingId);
+      if (b && b.status !== status) {
+        setStatus(b.status as TrackingStatus);
+        setBooking(b);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [bookingId, status, store]);
+
   // Listen for realtime events
   useEffect(() => {
     if (!ready) return;
@@ -667,6 +680,92 @@ export default function BookedPage() {
               <Stepper statuses={stepStatuses} t={t} />
             </div>
 
+            {/* ORDER COMPLETE TAB / BANNER (comes up on completion) */}
+            {status === "completed" && (
+              <div
+                className="rounded-[20px] p-6 text-center shadow-sm animate-fade-in my-1"
+                style={{
+                  backgroundColor: C.cardFill,
+                  border: `1.5px solid ${C.success}`,
+                }}
+              >
+                <div
+                  className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3"
+                  style={{
+                    backgroundColor: "rgba(45, 106, 79, 0.12)",
+                    fontSize: "32px",
+                  }}
+                >
+                  🎉
+                </div>
+                <h2 className="text-[22px] font-bold tracking-tight mb-1" style={{ color: C.ink }}>
+                  Order Complete!
+                </h2>
+                <p className="text-[14px] leading-relaxed mb-4" style={{ color: C.secondary }}>
+                  Your service has been completed successfully. Your home is fresh and clean!
+                </p>
+
+                {/* Rating card */}
+                <div
+                  className="rounded-[14px] p-4 mb-4"
+                  style={{
+                    backgroundColor: C.white,
+                    border: `1px solid ${C.hairline}`,
+                  }}
+                >
+                  <p className="text-[13px] font-medium mb-2" style={{ color: C.ink }}>
+                    Rate your experience with {helperName}
+                  </p>
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => handleRate(star)}
+                        className="text-[32px] no-select cursor-pointer active:scale-125 transition-transform"
+                        style={{ color: star <= rating ? "#F5A623" : C.hairline }}
+                        aria-label={`${star} star`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                  {rating > 0 && (
+                    <p className="text-[12px] font-medium" style={{ color: C.success }}>
+                      Thanks for rating {helperName}!
+                    </p>
+                  )}
+                </div>
+
+                {redirectCountdown !== null && redirectCountdown > 0 && (
+                  <p className="text-[13px] text-ink-muted mb-3.5 font-medium">
+                    Moving to your booking history in {redirectCountdown}s...
+                  </p>
+                )}
+
+                <div className="flex flex-col gap-2.5">
+                  <Link
+                    href="/orders?tab=history"
+                    className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white flex items-center justify-center no-underline shadow-xs cursor-pointer active:scale-98 transition-transform"
+                    style={{ backgroundColor: C.brand }}
+                  >
+                    View in Booking History
+                  </Link>
+                  <Link
+                    href="/"
+                    className="w-full h-11 rounded-[12px] text-[14px] font-medium flex items-center justify-center no-underline cursor-pointer active:scale-98 transition-transform"
+                    style={{
+                      backgroundColor: C.white,
+                      color: C.ink,
+                      border: `1px solid ${C.hairline}`,
+                    }}
+                  >
+                    Back to Home
+                  </Link>
+                </div>
+              </div>
+            )}
+
             {/* c. Helper card */}
             {showHelper && (
               <div className="rounded-[16px] p-4 flex items-center gap-3" style={{ backgroundColor: C.cardFill, border: `1px solid ${C.hairline}` }}>
@@ -786,91 +885,7 @@ export default function BookedPage() {
               </div>
             </div>
 
-            {/* g. Completed: Order Done Banner & Rating */}
-            {status === "completed" && (
-              <div
-                className="rounded-[20px] p-6 text-center shadow-sm"
-                style={{
-                  backgroundColor: C.cardFill,
-                  border: `1.5px solid ${C.success}`,
-                }}
-              >
-                <div
-                  className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3"
-                  style={{
-                    backgroundColor: "rgba(45, 106, 79, 0.12)",
-                    fontSize: "32px",
-                  }}
-                >
-                  🎉
-                </div>
-                <h2 className="text-[22px] font-bold tracking-tight mb-1" style={{ color: C.ink }}>
-                  Order Done!
-                </h2>
-                <p className="text-[14px] leading-relaxed mb-4" style={{ color: C.secondary }}>
-                  Your service has been completed successfully. Your home is fresh and clean!
-                </p>
 
-                {/* Rating card */}
-                <div
-                  className="rounded-[14px] p-4 mb-4"
-                  style={{
-                    backgroundColor: C.white,
-                    border: `1px solid ${C.hairline}`,
-                  }}
-                >
-                  <p className="text-[13px] font-medium mb-2" style={{ color: C.ink }}>
-                    Rate your experience with {helperName}
-                  </p>
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => handleRate(star)}
-                        className="text-[32px] no-select cursor-pointer active:scale-125 transition-transform"
-                        style={{ color: star <= rating ? "#F5A623" : C.hairline }}
-                        aria-label={`${star} star`}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
-                  {rating > 0 && (
-                    <p className="text-[12px] font-medium" style={{ color: C.success }}>
-                      Thanks for rating {helperName}!
-                    </p>
-                  )}
-                </div>
-
-                {redirectCountdown !== null && redirectCountdown > 0 && (
-                  <p className="text-[13px] text-ink-muted mb-3.5 font-medium">
-                    Returning to your orders in {redirectCountdown}s...
-                  </p>
-                )}
-
-                <div className="flex flex-col gap-2.5">
-                  <Link
-                    href="/orders?tab=history"
-                    className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white flex items-center justify-center no-underline shadow-xs cursor-pointer active:scale-98 transition-transform"
-                    style={{ backgroundColor: C.brand }}
-                  >
-                    View in Booking History
-                  </Link>
-                  <Link
-                    href="/"
-                    className="w-full h-11 rounded-[12px] text-[14px] font-medium flex items-center justify-center no-underline cursor-pointer active:scale-98 transition-transform"
-                    style={{
-                      backgroundColor: C.white,
-                      color: C.ink,
-                      border: `1px solid ${C.hairline}`,
-                    }}
-                  >
-                    Back to Home
-                  </Link>
-                </div>
-              </div>
-            )}
 
             {/* h. Actions */}
             {showActions && (

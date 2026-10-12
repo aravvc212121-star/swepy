@@ -120,54 +120,81 @@ export default function SearchingPage() {
         setHelpers(prev => { const next = new Map(prev); next.delete(event.helper_id); return next; });
       }
 
-      // Helper accepted our booking
-      if (event.type === "booking_accept" && bookingRef.current && event.booking_id === bookingRef.current.id) {
-        // First-accept-wins
-        const b = bookingRef.current;
-        if (b.status !== "searching") return;
+      // Helper accepted our booking -> navigate immediately to tracking with OTP
+      if (event.type === "booking_accept") {
+        const b = bookingRef.current || (bookingId ? store.getBooking(bookingId) : null) || store.getBooking(event.booking_id);
+        const targetId = event.booking_id || b?.id;
 
-        const updated = store.updateBooking(b.id, {
-          status: "accepted",
-          helper_id: event.helper_id,
-          helper_name: event.helper_name,
-          helper_lat: event.lat,
-          helper_lng: event.lng,
-        }) || {
-          ...b,
-          status: "accepted" as const,
-          helper_id: event.helper_id,
-          helper_name: event.helper_name,
-          helper_lat: event.lat,
-          helper_lng: event.lng,
-        };
+        if (targetId && (!b || b.id === targetId)) {
+          if (b) {
+            store.updateBooking(b.id, {
+              status: "accepted",
+              helper_id: event.helper_id,
+              helper_name: event.helper_name,
+              helper_lat: event.lat,
+              helper_lng: event.lng,
+            });
+            bookingRef.current = {
+              ...b,
+              status: "accepted" as const,
+              helper_id: event.helper_id,
+              helper_name: event.helper_name,
+              helper_lat: event.lat,
+              helper_lng: event.lng,
+            };
 
-        bookingRef.current = updated;
-        // Broadcast assigned to lock in the match
-        transport.send({
-          type: "booking_assigned",
-          booking_id: b.id,
-          helper_id: event.helper_id,
-          helper_name: event.helper_name,
-          otp: b.otp,
-          address_full: b.address_full,
-          service_name: b.service_name,
-          home_size: b.home_size,
-          price: b.price,
-          notes: b.notes,
-          addons: b.addons,
-          lat: b.lat,
-          lng: b.lng,
-          ts: Date.now(),
-          sender: session.user_id,
-        });
-        // Stop timer
-        if (searchTimerRef.current) { clearInterval(searchTimerRef.current); searchTimerRef.current = null; }
-        // Navigate to tracking page
-        router.replace(`/booking/${b.id}`);
+            // Broadcast assigned to lock in the match
+            transport.send({
+              type: "booking_assigned",
+              booking_id: b.id,
+              helper_id: event.helper_id,
+              helper_name: event.helper_name,
+              otp: b.otp,
+              address_full: b.address_full,
+              service_name: b.service_name,
+              home_size: b.home_size,
+              price: b.price,
+              notes: b.notes,
+              addons: b.addons,
+              lat: b.lat,
+              lng: b.lng,
+              ts: Date.now(),
+              sender: session.user_id,
+            });
+          }
+
+          // Stop search timer
+          if (searchTimerRef.current) {
+            clearInterval(searchTimerRef.current);
+            searchTimerRef.current = null;
+          }
+
+          // Navigate to tracking page with OTP immediately
+          router.replace(`/booking/${targetId}`);
+        }
       }
     });
     return unsub;
-  }, [ready, session, transport, store, router]);
+  }, [ready, session, transport, store, router, bookingId]);
+
+  // Sync across tabs via storage event if helper accepted in another tab
+  useEffect(() => {
+    const handleStorage = () => {
+      const curId = bookingRef.current?.id || bookingId;
+      if (curId) {
+        const current = store.getBooking(curId);
+        if (current && (current.status === "accepted" || current.status === "on_the_way" || current.status === "arrived")) {
+          if (searchTimerRef.current) {
+            clearInterval(searchTimerRef.current);
+            searchTimerRef.current = null;
+          }
+          router.replace(`/booking/${current.id}`);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [bookingId, router, store]);
 
   // Create booking on mount if none exists
   useEffect(() => {
