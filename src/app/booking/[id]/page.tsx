@@ -213,6 +213,10 @@ export default function BookedPage() {
   const [lastUpdatedSec, setLastUpdatedSec] = useState<number | null>(null);
   const [isApproximateEta, setIsApproximateEta] = useState<boolean>(false);
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
+  const statusRef = useRef<TrackingStatus>(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   // Initialize session
   useEffect(() => {
@@ -243,13 +247,30 @@ export default function BookedPage() {
 
   // Realtime Gateway: subscribe to live tracking API
   useEffect(() => {
+    // If booking is already terminal, never subscribe or poll
+    if (status === "completed" || status === "cancelled") {
+      return;
+    }
+
     const unsub = realtimeGateway.subscribe(
       bookingId,
       (data: LiveBookingUpdate) => {
-        if (data.booking_status && data.booking_status !== status) {
+        // Disallow polling updates if already terminal
+        if (statusRef.current === "completed" || statusRef.current === "cancelled") {
+          return;
+        }
+
+        if (data.booking_status) {
           const s = data.booking_status as TrackingStatus;
-          setStatus(s);
-          if (booking) {
+          if (s === "completed") {
+            setStatus("completed");
+            setBooking(prev => (prev ? { ...prev, status: "completed" as any } : prev));
+            store.updateBooking(bookingId, { status: "completed" as any });
+            return;
+          }
+
+          if (s !== statusRef.current) {
+            setStatus(s);
             setBooking(prev => (prev ? { ...prev, status: s as any } : prev));
           }
         }
@@ -290,7 +311,7 @@ export default function BookedPage() {
     );
 
     return unsub;
-  }, [bookingId, status, booking]);
+  }, [bookingId, status, store]);
 
   // Load booking from store or API
   useEffect(() => {
@@ -300,7 +321,9 @@ export default function BookedPage() {
     const local = store.getBooking(bookingId);
     if (local) {
       setBooking(local);
-      setStatus(local.status as TrackingStatus);
+      if (statusRef.current !== "completed" || local.status === "completed") {
+        setStatus(local.status as TrackingStatus);
+      }
       if (local.helper_lat && local.helper_lng) {
         const dist = haversine({ lat: local.lat, lng: local.lng }, { lat: local.helper_lat, lng: local.helper_lng });
         setDistance(dist);
@@ -363,14 +386,19 @@ export default function BookedPage() {
   useEffect(() => {
     const handleStorage = () => {
       const b = store.getBooking(bookingId);
-      if (b && b.status !== status) {
-        setStatus(b.status as TrackingStatus);
-        setBooking(b);
+      if (b) {
+        if (statusRef.current === "completed" && b.status !== "completed") {
+          return;
+        }
+        if (b.status !== statusRef.current) {
+          setStatus(b.status as TrackingStatus);
+          setBooking(b);
+        }
       }
     };
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, [bookingId, status, store]);
+  }, [bookingId, store]);
 
   // Listen for realtime events
   useEffect(() => {
@@ -378,8 +406,14 @@ export default function BookedPage() {
     const unsub = transport.subscribe((event: RealtimeEvent) => {
       if (session && event.sender === session.user_id) return;
 
+      // If booking is already completed, ignore location or assignment updates
+      if (statusRef.current === "completed" && event.type !== "job_status") {
+        return;
+      }
+
       // Helper location pings
       if (event.type === "job_location" && event.booking_id === bookingId) {
+        if (statusRef.current === "completed") return;
         setBooking(prev => prev ? { ...prev, helper_lat: event.lat, helper_lng: event.lng } : prev);
         store.updateBooking(bookingId, { helper_lat: event.lat, helper_lng: event.lng });
         setHelperLivePosition({
@@ -402,6 +436,7 @@ export default function BookedPage() {
 
       // Also listen to general helper_location if helper_id matches
       if (event.type === "helper_location" && booking && event.helper_id === booking.helper_id) {
+        if (statusRef.current === "completed") return;
         setBooking(prev => prev ? { ...prev, helper_lat: event.lat, helper_lng: event.lng } : prev);
         store.updateBooking(bookingId, { helper_lat: event.lat, helper_lng: event.lng });
         setHelperLivePosition({
@@ -420,6 +455,7 @@ export default function BookedPage() {
       // Job status changes from helper
       if (event.type === "job_status" && event.booking_id === bookingId) {
         const newStatus = event.status as TrackingStatus;
+        if (statusRef.current === "completed" && newStatus !== "completed") return;
         setStatus(newStatus);
         setBooking(prev => prev ? { ...prev, status: newStatus as any } : prev);
         store.updateBooking(bookingId, { status: newStatus as any });
@@ -427,6 +463,7 @@ export default function BookedPage() {
 
       // Helper assigned or accepted
       if ((event.type === "booking_assigned" || event.type === "booking_accept") && event.booking_id === bookingId) {
+        if (statusRef.current === "completed") return;
         setStatus("accepted");
         const lat = ("lat" in event && typeof event.lat === "number") ? event.lat : undefined;
         const lng = ("lng" in event && typeof event.lng === "number") ? event.lng : undefined;

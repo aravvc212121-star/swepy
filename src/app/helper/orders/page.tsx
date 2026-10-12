@@ -578,6 +578,13 @@ export default function HelperRequestsPage() {
       ts: Date.now(),
       sender: session.user_id,
     });
+
+    // Notify backend and live tracking cache
+    fetch(`/api/bookings/${activeJob.id}/live`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: nextStatus }),
+    }).catch(() => {});
   }, [activeJob, session, store, transport]);
 
   // Active trip simulation when helper starts trip (status === "on_the_way")

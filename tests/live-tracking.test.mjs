@@ -280,3 +280,51 @@ test('Live row deleted when booking transitions to in_progress', async () => {
   const rec = await liveLocationRepo.getLiveLocation(bkId);
   assert.equal(rec, null);
 });
+
+test('POST /api/bookings/[id]/live updates status to completed and cleans up live data', async () => {
+  const { GET, POST, demoBookings } = await import('../src/app/api/bookings/[id]/live/route.ts');
+  const { liveLocationRepo } = await import('../src/server/repositories/live-location.repository.ts');
+
+  const bkId = 'complete_bk_' + Date.now();
+  demoBookings.set(bkId, {
+    id: bkId,
+    customer_id: 'cust_done',
+    helper_id: 'hlp_done',
+    status: 'arrived',
+    lat: 28.6139,
+    lng: 77.2090,
+  });
+
+  await liveLocationRepo.upsertLiveLocation({
+    booking_id: bkId,
+    helper_id: 'hlp_done',
+    lat: 28.6139,
+    lng: 77.2090,
+    accuracy_m: 5,
+    recorded_at: new Date(),
+  });
+
+  const postReq = new Request(`http://localhost:3000/api/bookings/${bkId}/live`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'completed' }),
+  });
+
+  const postRes = await POST(postReq, { params: Promise.resolve({ id: bkId }) });
+  assert.equal(postRes.status, 200);
+  const postData = await postRes.json();
+  assert.equal(postData.status, 'completed');
+
+  // Verify GET returns completed
+  const getReq = new Request(`http://localhost:3000/api/bookings/${bkId}/live`, {
+    headers: { 'x-user-id': 'cust_done' },
+  });
+  const getRes = await GET(getReq, { params: Promise.resolve({ id: bkId }) });
+  assert.equal(getRes.status, 200);
+  const getData = await getRes.json();
+  assert.equal(getData.booking_status, 'completed');
+
+  // Live row should be cleaned up
+  const rec = await liveLocationRepo.getLiveLocation(bkId);
+  assert.equal(rec, null);
+});

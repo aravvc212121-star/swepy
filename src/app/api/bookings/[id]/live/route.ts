@@ -22,6 +22,46 @@ export const demoBookings = new Map<string, {
   address_short?: string;
 }>();
 
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await req.json();
+    const status = body.status;
+    if (status) {
+      const existing = demoBookings.get(id);
+      demoBookings.set(id, {
+        id,
+        customer_id: existing?.customer_id || "customer",
+        helper_id: existing?.helper_id || "hlp_demo",
+        status,
+        lat: existing?.lat || 28.6139,
+        lng: existing?.lng || 77.2090,
+        address_short: existing?.address_short,
+      });
+
+      for (const [_, b] of helperActiveBookings.entries()) {
+        if (b.booking_id === id) {
+          b.status = status;
+        }
+      }
+
+      if (["completed", "cancelled", "in_progress"].includes(status)) {
+        await liveLocationRepo.deleteLiveLocation(id).catch(() => {});
+        await liveLocationRepo.deleteRoute(id).catch(() => {});
+        try {
+          await bookingRepo.updateBookingStatus(id, status as any);
+        } catch { /* DB offline in dev */ }
+      }
+    }
+    return NextResponse.json({ ok: true, status });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -61,11 +101,20 @@ export async function GET(
 
     // Default mock fallback for dev if booking does not exist in DB yet
     if (!booking) {
+      let qStatus: string | null = null;
+      try {
+        const url = (req as any).nextUrl || new URL(req.url);
+        qStatus = url.searchParams.get("status");
+      } catch { /* ignore */ }
+      if (!qStatus) {
+        qStatus = req.headers.get("x-booking-status");
+      }
+
       booking = {
         id,
         customer_id: "customer",
         helper_id: "hlp_demo",
-        status: "assigned",
+        status: qStatus || "assigned",
         lat: 28.6139,
         lng: 77.2090,
       };
