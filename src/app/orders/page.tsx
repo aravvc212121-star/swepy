@@ -2,10 +2,11 @@
 
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import AppShell from "@/components/app-shell";
 import BottomNav from "@/components/bottom-nav";
-import { PageTitle, Card, CardStack } from "@/components/ui";
-import { IconCheck, IconChevronRight, IconClock, IconMapPin, IconSparkles } from "@/components/icons";
+import { Card, CardStack } from "@/components/ui";
+import { IconCheck, IconChevronRight, IconClock, IconMapPin, IconSparkles, IconHeadphones } from "@/components/icons";
 import { formatINR, formatDate } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { useSwepy } from "@/lib/swepy/provider";
@@ -147,24 +148,37 @@ function OrdersContent() {
   };
 
   return (
-    <AppShell>
-      <PageTitle>{t("orders.title")}</PageTitle>
+    <AppShell className="!pt-2">
+      {/* ── Top Header: Booking + Help ── */}
+      <div className="flex items-center justify-between pb-2 mb-3 border-b border-[var(--surface-border)]">
+        <h1 className="text-[15px] font-semibold text-ink tracking-tight">
+          {t("orders.title")}
+        </h1>
+        <Link
+          href="/help"
+          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[12px] font-semibold text-ink transition-colors border border-[var(--surface-border)] bg-surface no-select shadow-xs hover:border-brand-rose/40"
+          data-pressable=""
+        >
+          <IconHeadphones size={13.5} className="text-brand-rose shrink-0" />
+          <span>Help</span>
+        </Link>
+      </div>
 
       {/* ── Tabs ── */}
-      <div className="flex bg-surface p-1 rounded-[16px] mb-6 shadow-sm border border-[var(--surface-border)]">
+      <div className="flex bg-surface p-[3px] rounded-[12px] mb-4 shadow-xs border border-[var(--surface-border)]">
         {(["ongoing", "scheduled", "history"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2 text-[13px] font-medium rounded-[12px] transition-all no-select cursor-pointer ${
+            className={`flex-1 py-1.5 text-[12px] font-medium rounded-[9px] transition-all no-select cursor-pointer ${
               activeTab === tab
-                ? "bg-brand-rose text-white shadow-sm"
+                ? "bg-brand-rose text-white shadow-xs"
                 : "text-ink-muted hover:text-ink"
             }`}
           >
             {t(`orders.${tab}`)}
             {tab === "ongoing" && ongoing.length > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.2 text-[11px] rounded-full bg-white/20">
+              <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-white/20">
                 {ongoing.length}
               </span>
             )}
@@ -287,11 +301,11 @@ function OrdersContent() {
       </CardStack>
 
       {visibleOrders.length === 0 && (
-        <div className="text-center py-16">
-          <p className="text-[15px] text-ink-muted">{t("orders.noBookings")}</p>
+        <div className="flex flex-col items-center justify-center text-center min-h-[55dvh] py-8">
+          <p className="text-[17px] font-bold text-black dark:text-white">{t("orders.noBookings")}</p>
           <a
             href="/"
-            className="text-[13px] font-medium mt-2 inline-flex items-center justify-center min-h-[44px] px-4 rounded-[12px] no-underline no-select bg-surface shadow-xs"
+            className="text-[13px] font-semibold mt-1.5 inline-flex items-center justify-center no-underline no-select transition-opacity hover:opacity-85"
             data-pressable=""
             style={{ color: "var(--brand-rose)" }}
           >

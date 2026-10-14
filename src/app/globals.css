@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* ── Plus Jakarta Sans ── */
 @font-face {
@@ -20,7 +21,7 @@
 /* ── Design tokens as CSS custom properties ── */
 :root {
   /* Background */
-  --app-bg: #faf7f8;
+  --app-bg: #ffffff;
   --surface: #ffffff;
   --surface-border: #e6dee2;
 
@@ -52,8 +53,8 @@
   --step-inactive: #e0cfd6;
 
   /* Card/sheet fills */
-  --card-fill: #fff2f6;
-  --hero-card-bg: #fff2f6;
+  --card-fill: #ffffff;
+  --hero-card-bg: #ffffff;
   --sheet-bg: #ffffff;
 
   /* Footer */
@@ -253,18 +254,6 @@ textarea {
   }
 }
 
-/* ── Nav icon pop animation ── */
-@keyframes navIconPop {
-  0%   { transform: scale(1); }
-  30%  { transform: scale(1.4); }
-  55%  { transform: scale(0.88); }
-  75%  { transform: scale(1.15); }
-  100% { transform: scale(1); }
-}
-
-.nav-icon-pop {
-  animation: navIconPop 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
-}
 
 /* ── Hero Book now button ── */
 .hero-book-btn {
@@ -286,5 +275,3 @@ textarea {
 :root.dark .nav-logo-dark {
   display: block !important;
 }
-
-

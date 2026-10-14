@@ -19,7 +19,7 @@ export default function AppShell({
     <div
       className={`w-full max-w-[430px] mx-auto min-h-dvh px-4 pt-4 bg-app-bg ${className}`}
       style={{
-        paddingBottom: noPaddingBottom ? 0 : "calc(80px + 16px + env(safe-area-inset-bottom, 0px))",
+        paddingBottom: noPaddingBottom ? 0 : "calc(72px + env(safe-area-inset-bottom, 0px))",
       }}
     >
       {children}

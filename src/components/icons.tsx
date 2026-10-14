@@ -79,6 +79,11 @@ export const IconHelpCircle = makeIcon(
   "IconHelpCircle"
 );
 
+export const IconHeadphones = makeIcon(
+  '<rect x="4" y="13" width="5" height="7" rx="2" /><rect x="15" y="13" width="5" height="7" rx="2" /><path d="M4 15v-3a8 8 0 0 1 16 0v3" />',
+  "IconHeadphones"
+);
+
 export const IconUser = makeIcon(
   '<path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0" /><path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />',
   "IconUser"

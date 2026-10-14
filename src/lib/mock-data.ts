@@ -272,7 +272,7 @@ export const servicesGrid: ServiceGridItem[] = [
   { slug: "utensils", name: "Utensils", image: "/services/utensils.jpg", route: "/service/utensils", sortOrder: 5, active: true, iconFallback: "sparkles" },
   { slug: "kitchen-prep", name: "Kitchen prep", image: "/services/kitchen-prep.jpg", route: "/service/kitchen-prep", sortOrder: 6, active: true, iconFallback: "kitchen" },
   { slug: "dusting-wiping", name: "Dusting and wiping", image: "/services/dusting-and-wiping.jpg", route: "/service/dusting-wiping", sortOrder: 7, active: true, iconFallback: "broom" },
-  { slug: "sweeping-mopping", name: "Sweeping and mopping", image: "/services/sweeping-and-mopping.jpg", route: "/service/sweeping-mopping", sortOrder: 8, active: true, iconFallback: "broom" },
+  { slug: "sweeping-mopping", name: "Sweeping and mopping", image: "/services/after-party-clean.jpg", route: "/service/sweeping-mopping", sortOrder: 8, active: true, iconFallback: "broom" },
   { slug: "pre-party-clean", name: "Pre-party express clean", image: "/services/pre-party-clean.jpg", route: "/service/pre-party-clean", sortOrder: 9, active: true, iconFallback: "sparkles" },
   { slug: "wardrobe-cleaning", name: "Complete wardrobe cleaning", image: "/services/wardrobe-cleaning.jpg", route: "/service/wardrobe-cleaning", sortOrder: 10, active: true, iconFallback: "hanger" },
   { slug: "after-party-clean", name: "After-party express clean", image: "/services/after-party-clean.jpg", route: "/service/after-party-clean", sortOrder: 11, active: true, iconFallback: "sparkles" },

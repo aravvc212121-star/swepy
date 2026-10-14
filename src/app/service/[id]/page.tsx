@@ -41,7 +41,7 @@ const addonImages: Record<string, string> = {
   utensils: "/services/utensils.jpg",
   "kitchen-prep": "/services/kitchen-prep.jpg",
   dusting: "/services/dusting-and-wiping.jpg",
-  sweeping: "/services/sweeping-and-mopping.jpg",
+  sweeping: "/services/after-party-clean.jpg",
   wardrobe: "/services/wardrobe-cleaning.jpg",
   window: "/services/window-cleaning.jpg",
   balcony: "/services/window-cleaning.jpg",

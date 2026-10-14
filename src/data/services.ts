@@ -68,7 +68,7 @@ export const allServices: Service[] = [
   {
     slug: "sweeping-and-mopping",
     name: "Sweeping and mopping",
-    image: "/services/sweeping-and-mopping.jpg",
+    image: "/services/after-party-clean.jpg",
     description: "Floors swept and mopped, room by room.",
     included: ["Sweeping all living areas", "Mopping with floor cleaner", "Corners and under light furniture", "Door mats shaken out", "Kitchen and bathroom floors"],
     notIncluded: ["Moving heavy furniture", "Scrubbing stubborn stains", "Polishing or waxing floors", "Washing carpets or rugs"],

@@ -1,8 +1,7 @@
 {
   "nav": {
     "home": "Home",
-    "activity": "Activity",
-    "booking": "Booking",
+    "booking": "Bookings",
     "tracking": "Tracking",
     "profile": "Profile"
   },
@@ -10,6 +9,8 @@
     "in10min": "in 10 minutes",
     "helperBadge": "10 min",
     "headline": "Helper at your door in 10 minutes",
+    "headlinePart1": "Helper at your door in ",
+    "headlineHighlight": "10 minutes",
     "subline": "Book, they clean, they go.",
     "whatDoYouNeed": "What do you need?",
     "bookHelper": "Book a helper",
@@ -22,7 +23,10 @@
     "minorDesc": "Sweep, mop, dust, utensils",
     "majorDesc": "Washrooms, kitchen, sofa and more",
     "fromPrice": "From ₹249",
-    "priceByHome": "Price by home size"
+    "priceByHome": "Price by home size",
+    "servicesWeOffer": "Services we offer",
+    "allServicesWeOffer": "All services we offer",
+    "scheduleOrBook": "Schedule or book for later"
   },
   "profile": {
     "title": "Profile",
@@ -113,17 +117,6 @@
     "summaryOff": "Off",
     "summaryOn": "{{count}} of {{total}} on"
   },
-  "activity": {
-    "title": "Activity",
-    "recentlyVisited": "Recently visited"
-  },
-  "orders": {
-    "title": "Booking",
-    "completed": "Completed",
-    "rated": "Rated",
-    "noBookings": "No bookings yet",
-    "bookFirst": "Book your first helper"
-  },
   "searching": {
     "findingHelper": "Finding your helper",
     "searchingWithin": "Searching within {{radius}} km",
@@ -152,7 +145,8 @@
     "bookHelper": "Book helper"
   },
   "orders": {
-    "title": "Bookings",
+    "title": "Booking",
+    "help": "Help",
     "ongoing": "Ongoing",
     "scheduled": "Scheduled",
     "history": "History",
@@ -277,14 +271,6 @@
     "refund": "Refund policy",
     "getApp": "Get the app",
     "installSwepy": "Install Swepy"
-  },
-  "activity": {
-    "title": "Activity",
-    "recentActivity": "Recent Activity",
-    "continueDraft": "Continue booking",
-    "viewService": "View service",
-    "draftSubtitle": "You were booking a {{serviceName}}",
-    "viewedSubtitle": "You viewed {{serviceName}}"
   },
   "helper": {
     "home": "Home",

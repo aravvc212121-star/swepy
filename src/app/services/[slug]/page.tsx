@@ -23,7 +23,7 @@ function IncludedList({
   return (
     <div
       className="rounded-[12px] p-3.5 mt-3"
-      style={{ backgroundColor: "#FFFFFF", border: "0.5px solid var(--surface-border)" }}
+      style={{ backgroundColor: "var(--surface)", border: "0.5px solid var(--surface-border)" }}
     >
       {/* Header */}
       <div className="flex items-center gap-2 mb-2.5">
@@ -33,7 +33,7 @@ function IncludedList({
         >
           <Icon size={14} className="text-white" />
         </div>
-        <span className="text-[15px] font-medium" style={{ color: "#3B1428" }}>
+        <span className="text-[15px] font-medium text-ink">
           {label}
         </span>
       </div>
@@ -51,8 +51,7 @@ function IncludedList({
               {...{ style: { color: circleColor } }}
             />
             <span
-              className="text-[13px] leading-[1.45]"
-              style={{ color: "#3B1428" }}
+              className="text-[13px] leading-[1.45] text-ink"
             >
               {item}
             </span>
@@ -69,7 +68,7 @@ function StickyBookBar({ slug }: { slug: string }) {
     <div
       className="sticky bottom-0 left-0 right-0 z-10"
       style={{
-        backgroundColor: "#FFFFFF",
+        backgroundColor: "var(--surface)",
         borderTop: "1px solid var(--surface-border)",
         padding: "12px 16px",
         paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
@@ -134,11 +133,11 @@ export default function ServiceDetailPage({
           type="button"
           onClick={handleBack}
           data-pressable=""
-          className="w-11 h-11 rounded-full bg-white flex items-center justify-center outline-none focus-visible:outline-2 focus-visible:outline-offset-2 no-select"
-          style={{ outlineColor: "#F6B21A" }}
+          className="w-11 h-11 rounded-full flex items-center justify-center outline-none focus-visible:outline-2 focus-visible:outline-offset-2 no-select"
+          style={{ backgroundColor: "var(--surface)", border: "0.5px solid var(--surface-border)", outlineColor: "#F6B21A" }}
           aria-label="Back"
         >
-          <IconArrowLeft size={16} style={{ color: "var(--brand-rose)" }} />
+          <IconArrowLeft size={16} className="text-ink" />
         </button>
         <h1
           className="text-[15px] font-medium truncate"
@@ -153,7 +152,7 @@ export default function ServiceDetailPage({
         {/* Hero image card */}
         <div
           className="relative w-full h-[200px] rounded-[16px] overflow-hidden"
-          style={{ backgroundColor: "#FFFFFF" }}
+          style={{ backgroundColor: "var(--surface)" }}
         >
           <Image
             src={service.detailImage || service.image}
@@ -167,16 +166,14 @@ export default function ServiceDetailPage({
 
         {/* Title */}
         <h2
-          className="text-[20px] font-medium mt-4"
-          style={{ color: "#3B1428" }}
+          className="text-[20px] font-medium mt-4 text-ink"
         >
           {service.name}
         </h2>
 
         {/* Description */}
         <p
-          className="text-[13px] leading-[1.5] mt-1"
-          style={{ color: "#6E4A5C" }}
+          className="text-[13px] leading-[1.5] mt-1 text-ink-muted"
         >
           {service.description}
         </p>
