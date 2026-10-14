@@ -26,4 +26,27 @@ export class HelperRepository {
       WHERE user_id = ${helperId}
     `;
   }
+
+  /** Check if a helper has an active (accepted or on_the_way) booking */
+  async hasActiveBooking(helperId: string): Promise<boolean> {
+    const rows = await sql`
+      SELECT id FROM bookings
+      WHERE helper_id = ${helperId}
+        AND status IN ('accepted', 'on_the_way')
+      LIMIT 1
+    `;
+    return rows.length > 0;
+  }
+
+  /** Get helper profile info */
+  async getHelper(helperId: string): Promise<any | null> {
+    const rows = await sql`
+      SELECT h.*, u.full_name, u.phone_e164
+      FROM helpers h
+      JOIN users u ON h.user_id = u.id
+      WHERE h.user_id = ${helperId}
+    `;
+    return rows[0] || null;
+  }
 }
+

@@ -1,24 +1,10 @@
 import { BookingRepository } from '../repositories/booking.repository';
 import { HelperRepository } from '../repositories/helper.repository';
 import type { RealtimeGateway } from '../lib/interfaces';
+import { haversineMeters } from '../lib/geo';
 
 import * as h3 from 'h3-js';
 
-// Simple haversine implementation if not fully exposed
-function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371e3; // metres
-  const φ1 = lat1 * Math.PI/180; // φ, λ in radians
-  const φ2 = lat2 * Math.PI/180;
-  const Δφ = (lat2-lat1) * Math.PI/180;
-  const Δλ = (lon2-lon1) * Math.PI/180;
-
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-  return R * c; 
-}
 
 export class DispatchService {
   constructor(
@@ -35,7 +21,7 @@ export class DispatchService {
     // For now, simplify and just rank by distance
     const withDistance = onlineHelpers.map(h => ({
       ...h,
-      distance: getDistance(lat, lng, h.last_lat, h.last_lng)
+      distance: haversineMeters({ lat, lng }, { lat: h.last_lat, lng: h.last_lng })
     }));
 
     // Sort by nearest
@@ -49,10 +35,10 @@ export class DispatchService {
     if (selected.length === 0) {
       if (wave === 1) {
         // No helpers at all
-        await this.bookingRepo.updateBookingStatus(bookingId, 'no_helper_found');
+        await this.bookingRepo.updateBookingStatus(bookingId, 'expired');
       } else {
         // Waves exhausted
-        await this.bookingRepo.updateBookingStatus(bookingId, 'no_helper_found');
+        await this.bookingRepo.updateBookingStatus(bookingId, 'expired');
       }
       return;
     }
@@ -89,7 +75,7 @@ export class DispatchService {
            // For full implementation, we'd store wave in booking and increment
            await this.dispatchWave(bookingId, booking.address_snapshot.lat, booking.address_snapshot.lng, booking.address_snapshot.city_id, nextWave);
         } else {
-           await this.bookingRepo.updateBookingStatus(bookingId, 'no_helper_found');
+           await this.bookingRepo.updateBookingStatus(bookingId, 'expired');
         }
       }
     }

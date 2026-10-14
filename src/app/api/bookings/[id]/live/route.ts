@@ -4,14 +4,14 @@ import crypto from "crypto";
 import { authService } from "../../../auth/_init.ts";
 import { liveLocationRepo } from "../../../../../server/repositories/live-location.repository.ts";
 import { BookingRepository } from "../../../../../server/repositories/booking.repository.ts";
+import { bookingService, pushRealtimeEvent } from "../../../../../server/services/booking.service.ts";
 import { getRoutingProvider } from "../../../../../server/services/routing/index.ts";
 import { distanceToRouteLineMeters } from "../../../../../server/services/routing/route-geometry.ts";
-import { haversineDistanceMeters } from "../../../../../server/services/routing/straight-line.provider.ts";
-import { helperActiveBookings } from "../../../helper/location/route.ts";
+import { haversineMeters, isValidCoord, isAtLocation } from "../../../../../server/lib/geo.ts";
 
 const bookingRepo = new BookingRepository();
 
-// In-memory demo booking cache for local testing
+// In-memory demo booking cache for local testing (kept for backward compat)
 export const demoBookings = new Map<string, {
   id: string;
   customer_id: string;
@@ -20,8 +20,17 @@ export const demoBookings = new Map<string, {
   lat: number;
   lng: number;
   address_short?: string;
+  start_code?: string;
 }>();
 
+// Separate user location cache (per booking) — user and helper locations are never mixed
+const userLocations = new Map<string, { lat: number; lng: number; updated_at: number }>();
+
+/**
+ * POST /api/bookings/[id]/live — update booking status (with validation).
+ * Kept for backward compatibility with the frontend demo flow.
+ * Now validates status transitions through the booking service when possible.
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -30,27 +39,37 @@ export async function POST(
     const { id } = await params;
     const body = await req.json();
     const status = body.status;
+
+    // Accept user location updates
+    if (body.user_lat && body.user_lng) {
+      if (isValidCoord(body.user_lat, body.user_lng)) {
+        userLocations.set(id, { lat: body.user_lat, lng: body.user_lng, updated_at: Date.now() });
+      }
+    }
+
     if (status) {
+      // Update demo bookings cache
       const existing = demoBookings.get(id);
       demoBookings.set(id, {
         id,
         customer_id: existing?.customer_id || "customer",
-        helper_id: existing?.helper_id || "hlp_demo",
+        helper_id: existing?.helper_id || body.helper_id || "hlp_demo",
         status,
-        lat: existing?.lat || 28.6139,
-        lng: existing?.lng || 77.2090,
-        address_short: existing?.address_short,
+        lat: existing?.lat || body.lat || 28.6139,
+        lng: existing?.lng || body.lng || 77.2090,
+        address_short: existing?.address_short || body.address_short,
       });
 
-      for (const [_, b] of helperActiveBookings.entries()) {
-        if (b.booking_id === id) {
-          b.status = status;
-        }
-      }
-
-      if (["completed", "cancelled", "in_progress"].includes(status)) {
+      // Clean up live data on terminal statuses
+      if (["completed", "cancelled"].includes(status)) {
         await liveLocationRepo.deleteLiveLocation(id).catch(() => {});
         await liveLocationRepo.deleteRoute(id).catch(() => {});
+        userLocations.delete(id);
+        try {
+          await bookingRepo.updateBookingStatus(id, status as any);
+        } catch { /* DB offline in dev */ }
+      } else {
+        // Try to update DB status
         try {
           await bookingRepo.updateBookingStatus(id, status as any);
         } catch { /* DB offline in dev */ }
@@ -71,32 +90,19 @@ export async function GET(
     const now = new Date();
     const serverTimeStr = now.toISOString();
 
-    // 1. Resolve booking
+    // 1. Resolve booking — prioritize DB, fallback to demo cache
     let booking: any = null;
-    if (demoBookings.has(id)) {
-      booking = demoBookings.get(id);
-    } else {
-      // Check memory map from helper actions
-      for (const [_, b] of helperActiveBookings.entries()) {
-        if (b.booking_id === id) {
-          booking = {
-            id: b.booking_id,
-            status: b.status,
-            customer_id: b.customer_id || "customer",
-            lat: b.lat || 28.6139,
-            lng: b.lng || 77.2090,
-          };
-          break;
-        }
-      }
+
+    // Try DB first
+    try {
+      booking = await bookingRepo.getBooking(id);
+    } catch {
+      // DB offline in dev
     }
 
-    if (!booking) {
-      try {
-        booking = await bookingRepo.getBooking(id);
-      } catch {
-        // Fallback for dev
-      }
+    // Fallback to demo cache
+    if (!booking && demoBookings.has(id)) {
+      booking = demoBookings.get(id);
     }
 
     // Default mock fallback for dev if booking does not exist in DB yet
@@ -114,7 +120,7 @@ export async function GET(
         id,
         customer_id: "customer",
         helper_id: "hlp_demo",
-        status: qStatus || "assigned",
+        status: qStatus || "accepted",
         lat: 28.6139,
         lng: 77.2090,
       };
@@ -142,7 +148,7 @@ export async function GET(
       } catch { /* ignore */ }
     }
 
-    // In dev / demo / test mode: if user header is passed (e.g. x-user-id / x-user-role)
+    // In dev / demo / test mode: if user header is passed
     const headerUserId = req.headers.get("x-user-id");
     const headerUserRole = req.headers.get("x-user-role");
     if (!currentUser && headerUserId) {
@@ -161,42 +167,47 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden: Not authorized to view this booking" }, { status: 403 });
     }
 
-    const bookingStatus = booking.status;
-    const isSharingWindow = ["assigned", "on_the_way", "arrived"].includes(bookingStatus);
+    // Determine if caller is the helper (to hide OTP from them)
+    const isHelper = currentUser && (
+      currentUser.id === booking.helper_id ||
+      currentUser.role === "helper"
+    );
 
-    // 3. Outside sharing window: stop publishing, delete live row, return only status
+    const bookingStatus = booking.status;
+    const isSharingWindow = ["accepted", "on_the_way"].includes(bookingStatus);
+
+    // 3. Outside sharing window: return only status, clean up if terminal
     if (!isSharingWindow) {
-      // Clean up live location row if booking progressed to in_progress / completed / cancelled
-      if (["in_progress", "completed", "cancelled"].includes(bookingStatus)) {
-        await liveLocationRepo.deleteLiveLocation(id);
-        await liveLocationRepo.deleteRoute(id);
+      if (["completed", "cancelled"].includes(bookingStatus)) {
+        await liveLocationRepo.deleteLiveLocation(id).catch(() => {});
+        await liveLocationRepo.deleteRoute(id).catch(() => {});
+        userLocations.delete(id);
       }
 
-      const outsideResponse = {
+      const outsideResponse: any = {
         booking_status: bookingStatus,
         server_time: serverTimeStr,
       };
 
-      const etag = `W/"${crypto.createHash("md5").update(JSON.stringify(outsideResponse)).digest("hex")}"`;
+      // ETag based on status only (not server_time, which changes each request)
+      const etag = `W/"${crypto.createHash("md5").update(bookingStatus).digest("hex")}"`;
       if (req.headers.get("if-none-match") === etag) {
         return new NextResponse(null, { status: 304, headers: { ETag: etag } });
       }
 
       return NextResponse.json(outsideResponse, {
-        headers: {
-          ETag: etag,
-          "Cache-Control": "no-cache",
-        },
+        headers: { ETag: etag, "Cache-Control": "no-cache" },
       });
     }
 
     // 4. In sharing window: fetch live location & destination
     const liveLoc = await liveLocationRepo.getLiveLocation(id);
 
-    // Default destination
+    // Destination = the coordinates saved at booking time
+    const addrSnapshot = booking.address_snapshot;
     const destination = {
-      lat: booking.lat ?? 28.6139,
-      lng: booking.lng ?? 77.2090,
+      lat: addrSnapshot?.lat ?? booking.lat ?? 28.6139,
+      lng: addrSnapshot?.lng ?? booking.lng ?? 77.2090,
     };
 
     // Helper coordinates
@@ -221,16 +232,31 @@ export async function GET(
         stale: isStale,
       };
     } else {
-      // Initial state before first ping: slight offset for demo / initial view
+      // No live location yet — use helper's last known location or a small offset
       helperLat = destination.lat + 0.008;
       helperLng = destination.lng - 0.006;
     }
+
+    // User location (separate from helper, never mixed)
+    const userLoc = userLocations.get(id);
+    const userPosition = userLoc
+      ? { lat: userLoc.lat, lng: userLoc.lng }
+      : { lat: destination.lat, lng: destination.lng };
 
     // 5. Route calculation & caching
     let cachedRoute = await liveLocationRepo.getRoute(id);
     let needRecompute = false;
 
-    if (!cachedRoute) {
+    // Skip routing when very close (< 30m)
+    const directDistM = haversineMeters(
+      { lat: helperLat, lng: helperLng },
+      destination,
+    );
+
+    if (directDistM < 30) {
+      // Very close — no route needed
+      needRecompute = false;
+    } else if (!cachedRoute) {
       needRecompute = true;
     } else {
       const routeAgeSeconds = (now.getTime() - new Date(cachedRoute.computed_at).getTime()) / 1000;
@@ -238,24 +264,18 @@ export async function GET(
 
       // Distance of helper to route line
       const distToLineM = distanceToRouteLineMeters({ lat: helperLat, lng: helperLng }, coords);
-      if (distToLineM > 150) {
+      if (distToLineM > 50) {
+        // Helper > 50m off route — recompute
         needRecompute = true;
-      } else if (routeAgeSeconds > 120) {
-        // Check if helper moved > 300m from route origin
-        const startPoint: [number, number] = coords[0] || [helperLng, helperLat];
-        const distFromStartM = haversineDistanceMeters(
-          { lat: helperLat, lng: helperLng },
-          { lat: startPoint[1], lng: startPoint[0] }
-        );
-        if (distFromStartM > 300) {
-          needRecompute = true;
-        }
+      } else if (routeAgeSeconds > 45) {
+        // Route older than 45s — recompute
+        needRecompute = true;
       }
     }
 
     const routingProvider = getRoutingProvider();
 
-    if (needRecompute) {
+    if (needRecompute && directDistM >= 30) {
       const computed = await routingProvider.calculateRoute(
         { lat: helperLat, lng: helperLng },
         destination
@@ -273,30 +293,36 @@ export async function GET(
       await liveLocationRepo.saveRoute(cachedRoute);
     }
 
-    // 6. Compute distance & ETA
-    // Remaining straight-line / remaining distance to destination
-    const remainingDirectDistM = haversineDistanceMeters(
-      { lat: helperLat, lng: helperLng },
-      destination
-    );
+    // 6. Compute distance & ETA (ONE place, saved for both apps)
+    const helperAccuracy = liveLoc?.accuracy_m ?? 25;
+    const destAccuracy = 10; // destination is a fixed pin
 
-    let etaMinutes = 1;
-    let distanceM = Math.round(remainingDirectDistM * 1.35);
+    let distanceM: number;
+    let etaMinutes: number;
 
-    if (cachedRoute && cachedRoute.distance_m > 0) {
-      distanceM = Math.round(remainingDirectDistM * 1.35);
+    if (isAtLocation(directDistM, helperAccuracy, destAccuracy)) {
+      // Within accuracy bubble — report 0
+      distanceM = 0;
+      etaMinutes = 0;
+    } else if (cachedRoute && cachedRoute.distance_m > 0) {
+      // Use route distance with ratio of remaining straight-line
+      distanceM = Math.round(directDistM * 1.35);
       const ratio = Math.min(1, Math.max(0, distanceM / cachedRoute.distance_m));
       etaMinutes = Math.max(1, Math.round((cachedRoute.duration_s * ratio) / 60));
     } else {
+      // Fallback: haversine * road factor
+      distanceM = Math.round(directDistM * 1.35);
       const avgSpeedKmh = Number(process.env.AVG_SPEED_KMH) || 15;
       const speedMps = (avgSpeedKmh * 1000) / 3600;
       etaMinutes = Math.max(1, Math.round(distanceM / speedMps / 60));
     }
 
-    const responsePayload = {
+    // 7. Build response
+    const responsePayload: any = {
       booking_status: bookingStatus,
       helper: helperPayload,
       destination,
+      user_position: userPosition,
       route: cachedRoute
         ? {
             geometry: cachedRoute.geometry,
@@ -310,7 +336,19 @@ export async function GET(
       server_time: serverTimeStr,
     };
 
-    // 7. ETag generation and 304 response (computed on state data, not ephemeral server_time)
+    // OTP: visible to USER only while status is accepted or on_the_way. NEVER to helper.
+    if (!isHelper && isSharingWindow) {
+      // For the user: include the OTP
+      // The OTP is stored as a hash in the DB. For demo/dev, check if it's in the demoBookings cache.
+      const demoB = demoBookings.get(id);
+      if (demoB?.start_code) {
+        responsePayload.start_code = demoB.start_code;
+      }
+      // If booking has a plaintext OTP in the demo cache, include it
+      // In production, the OTP was returned once at accept time and cached by the frontend
+    }
+
+    // 8. ETag
     const contentToHash = {
       booking_status: responsePayload.booking_status,
       helper: responsePayload.helper,
@@ -327,10 +365,7 @@ export async function GET(
     }
 
     return NextResponse.json(responsePayload, {
-      headers: {
-        ETag: etag,
-        "Cache-Control": "no-cache",
-      },
+      headers: { ETag: etag, "Cache-Control": "no-cache" },
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });

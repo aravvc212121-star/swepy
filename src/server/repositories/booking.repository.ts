@@ -1,16 +1,27 @@
 import { sql } from '../db/client';
 import { uuidv7, generateStartCode } from '../lib/id';
+import { hmacHash } from '../lib/crypto';
 
 export class BookingRepository {
   async createBooking(data: any): Promise<any> {
     const id = uuidv7();
+    const bookingNumber = `SW${Date.now().toString(36).toUpperCase()}`;
+    const addrSnapshot = data.addressSnapshot || {
+      lat: data.lat || 0,
+      lng: data.lng || 0,
+      city_id: data.cityId || null,
+    };
     const rows = await sql`
       INSERT INTO bookings (
-        id, customer_id, address_id, service_package_id, 
+        id, booking_number, customer_id, address_id, address_snapshot,
+        service_package_id, service_code, home_size,
         price_paise, total_paise, idempotency_key
       ) VALUES (
-        ${id}, ${data.customerId}, ${data.addressId}, ${data.servicePackageId},
-        ${data.pricePaise}, ${data.pricePaise}, ${data.idempotencyKey}
+        ${id}, ${bookingNumber}, ${data.customerId}, ${data.addressId || null},
+        ${sql.json(addrSnapshot)},
+        ${data.servicePackageId || null}, ${data.serviceCode || null},
+        ${data.homeSize || null},
+        ${data.pricePaise || 0}, ${data.pricePaise || 0}, ${data.idempotencyKey || null}
       )
       RETURNING *
     `;
@@ -32,8 +43,12 @@ export class BookingRepository {
       UPDATE bookings 
       SET status = ${status}, 
           helper_id = COALESCE(${helperId ?? null}, helper_id),
-          assigned_at = CASE WHEN ${status} = 'assigned' THEN NOW() ELSE assigned_at END,
-          version = version + 1
+          assigned_at = CASE WHEN ${status} = 'accepted' THEN NOW() ELSE assigned_at END,
+          started_at = CASE WHEN ${status} = 'on_the_way' THEN NOW() ELSE started_at END,
+          completed_at = CASE WHEN ${status} = 'completed' THEN NOW() ELSE completed_at END,
+          cancelled_at = CASE WHEN ${status} = 'cancelled' THEN NOW() ELSE cancelled_at END,
+          version = version + 1,
+          updated_at = NOW()
       WHERE id = ${id}
       RETURNING *
     `;
@@ -44,7 +59,7 @@ export class BookingRepository {
     const id = uuidv7();
     await sql`
       INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role, payload)
-      VALUES (${id}, ${bookingId}, ${eventType}, ${fromStatus}, ${toStatus}, ${actorId}, ${actorRole}, ${payload})
+      VALUES (${id}, ${bookingId}, ${eventType}, ${fromStatus}, ${toStatus}, ${actorId}, ${actorRole}, ${payload ? sql.json(payload) : null})
     `;
   }
 
@@ -52,7 +67,7 @@ export class BookingRepository {
     const id = uuidv7();
     await sql`
       INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, payload)
-      VALUES (${id}, ${aggregateType}, ${aggregateId}, ${eventType}, ${payload})
+      VALUES (${id}, ${aggregateType}, ${aggregateId}, ${eventType}, ${payload ? sql.json(payload) : null})
     `;
   }
 
@@ -95,13 +110,16 @@ export class BookingRepository {
         WHERE booking_id = ${bookingId} AND helper_id != ${helperId} AND status = 'pending'
       `;
 
-      // 3. Generate start code
+      // 3. Generate start code and hash it
       const startCode = generateStartCode();
+      const startCodeHash = hmacHash(startCode);
 
-      // 4. Update booking
+      // 4. Update booking — use 'accepted' (not 'assigned') to match frontend
       await tx`
         UPDATE bookings
-        SET status = 'assigned', helper_id = ${helperId}, assigned_at = NOW(), start_code = ${startCode}, version = version + 1
+        SET status = 'accepted', helper_id = ${helperId}, assigned_at = NOW(),
+            start_code = ${startCodeHash}, start_code_attempts = 0,
+            version = version + 1, updated_at = NOW()
         WHERE id = ${bookingId} AND status = 'searching'
       `;
 
@@ -109,14 +127,14 @@ export class BookingRepository {
       const eventId = uuidv7();
       await tx`
         INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role)
-        VALUES (${eventId}, ${bookingId}, 'helper_accepted', 'searching', 'assigned', ${helperId}, 'helper')
+        VALUES (${eventId}, ${bookingId}, 'helper_accepted', 'searching', 'accepted', ${helperId}, 'helper')
       `;
 
       // 6. Outbox
       const outboxId = uuidv7();
       await tx`
         INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, payload)
-        VALUES (${outboxId}, 'booking', ${bookingId}, 'booking_assigned', ${JSON.stringify({ helperId })})
+        VALUES (${outboxId}, 'booking', ${bookingId}, 'booking_accepted', ${sql.json({ helperId })})
       `;
     });
   }
@@ -127,5 +145,41 @@ export class BookingRepository {
       SET status = 'rejected', responded_at = NOW(), reject_reason = ${reason || null}
       WHERE booking_id = ${bookingId} AND helper_id = ${helperId} AND status = 'pending'
     `;
+  }
+
+  /** Find active booking for a user (searching, accepted, on_the_way) */
+  async findActiveForUser(userId: string): Promise<any | null> {
+    const rows = await sql`
+      SELECT * FROM bookings
+      WHERE customer_id = ${userId}
+        AND status IN ('searching', 'accepted', 'on_the_way')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    return rows[0] || null;
+  }
+
+  /** Find active tracking booking for user (accepted, on_the_way only) */
+  async findTrackingForUser(userId: string): Promise<any | null> {
+    const rows = await sql`
+      SELECT * FROM bookings
+      WHERE customer_id = ${userId}
+        AND status IN ('accepted', 'on_the_way')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    return rows[0] || null;
+  }
+
+  /** Find active booking for helper */
+  async findActiveForHelper(helperId: string): Promise<any | null> {
+    const rows = await sql`
+      SELECT * FROM bookings
+      WHERE helper_id = ${helperId}
+        AND status IN ('accepted', 'on_the_way')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    return rows[0] || null;
   }
 }

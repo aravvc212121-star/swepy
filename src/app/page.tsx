@@ -74,7 +74,7 @@ export default function HomePage() {
           {/* ── Hero Text ── */}
           <div className="mt-0 mb-2">
             <h2
-              className="text-[22px] font-medium leading-[1.25] mb-1 tracking-tighter whitespace-nowrap"
+              className="text-[22px] font-bold leading-[1.25] mb-1 whitespace-nowrap"
               style={{ color: "#FFFFFF" }}
             >
               {t("home.headline")}

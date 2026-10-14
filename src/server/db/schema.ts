@@ -207,3 +207,25 @@ export const demo_messages = pgTable("demo_messages", {
   payload: jsonb("payload").notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const booking_live_locations = pgTable("booking_live_locations", {
+  booking_id: text("booking_id").primaryKey().references(() => bookings.id),
+  helper_id: text("helper_id").notNull().references(() => users.id),
+  lat: doublePrecision("lat").notNull(),
+  lng: doublePrecision("lng").notNull(),
+  accuracy_m: doublePrecision("accuracy_m").notNull().default(0),
+  heading_deg: doublePrecision("heading_deg"),
+  speed_mps: doublePrecision("speed_mps"),
+  recorded_at: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const booking_routes = pgTable("booking_routes", {
+  booking_id: text("booking_id").primaryKey().references(() => bookings.id),
+  geometry: jsonb("geometry").notNull(),
+  distance_m: integer("distance_m").notNull().default(0),
+  duration_s: integer("duration_s").notNull().default(0),
+  source: text("source").notNull().default("straight_line"),
+  computed_at: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+

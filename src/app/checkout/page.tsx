@@ -144,13 +144,13 @@ export default function CheckoutPage() {
             onClick={() => setMode("instant")}
             className="flex-1 rounded-[14px] p-3.5 text-left"
             style={{
-              backgroundColor: mode === "instant" ? "var(--teal-soft)" : "var(--surface)",
-              border: `0.5px solid ${mode === "instant" ? "var(--teal)" : "var(--surface-border)"}`,
+              backgroundColor: mode === "instant" ? "var(--brand-rose)" : "var(--surface)",
+              border: `0.5px solid ${mode === "instant" ? "var(--brand-rose)" : "var(--surface-border)"}`,
             }}
           >
             <div className="flex items-center gap-2 mb-1">
               <IconBolt size={16} className="text-teal" />
-              <span className="text-[13px] font-medium" style={{ color: mode === "instant" ? "var(--teal-dark)" : "var(--ink)" }}>
+              <span className="text-[13px] font-medium" style={{ color: mode === "instant" ? "#FFFFFF" : "var(--ink)" }}>
                 {t("checkout.instant")}
               </span>
             </div>
@@ -160,13 +160,13 @@ export default function CheckoutPage() {
             onClick={() => setMode("schedule")}
             className="flex-1 rounded-[14px] p-3.5 text-left"
             style={{
-              backgroundColor: mode === "schedule" ? "var(--teal-soft)" : "var(--surface)",
-              border: `0.5px solid ${mode === "schedule" ? "var(--teal)" : "var(--surface-border)"}`,
+              backgroundColor: mode === "schedule" ? "var(--brand-rose)" : "var(--surface)",
+              border: `0.5px solid ${mode === "schedule" ? "var(--brand-rose)" : "var(--surface-border)"}`,
             }}
           >
             <div className="flex items-center gap-2 mb-1">
               <IconCalendar size={16} className="text-teal" />
-              <span className="text-[13px] font-medium" style={{ color: mode === "schedule" ? "var(--teal-dark)" : "var(--ink)" }}>
+              <span className="text-[13px] font-medium" style={{ color: mode === "schedule" ? "#FFFFFF" : "var(--ink)" }}>
                 {t("checkout.scheduleForLater")}
               </span>
             </div>
@@ -190,8 +190,8 @@ export default function CheckoutPage() {
                     onClick={() => { setSelectedDateIdx(i); setSelectedSlot(null); }}
                     className="flex flex-col items-center gap-0.5 rounded-[12px] px-3 py-2.5 shrink-0 transition-colors"
                     style={{
-                      backgroundColor: isSelected ? "var(--teal)" : "var(--app-bg)",
-                      border: `0.5px solid ${isSelected ? "var(--teal)" : "var(--surface-border)"}`,
+                      backgroundColor: isSelected ? "var(--brand-rose)" : "var(--app-bg)",
+                      border: `0.5px solid ${isSelected ? "var(--brand-rose)" : "var(--surface-border)"}`,
                       minWidth: "52px",
                     }}
                   >
@@ -224,8 +224,8 @@ export default function CheckoutPage() {
                     onClick={() => setSelectedSlot(slot)}
                     className="py-2.5 rounded-[10px] text-[12px] font-medium transition-colors"
                     style={{
-                      backgroundColor: isSelected ? "var(--teal)" : isDisabled ? "var(--app-bg)" : "var(--app-bg)",
-                      border: `0.5px solid ${isSelected ? "var(--teal)" : "var(--surface-border)"}`,
+                      backgroundColor: isSelected ? "var(--brand-rose)" : isDisabled ? "var(--app-bg)" : "var(--app-bg)",
+                      border: `0.5px solid ${isSelected ? "var(--brand-rose)" : "var(--surface-border)"}`,
                       color: isSelected ? "white" : isDisabled ? "var(--ink-muted)" : "var(--ink)",
                       opacity: isDisabled ? 0.4 : 1,
                       cursor: isDisabled ? "not-allowed" : "pointer",

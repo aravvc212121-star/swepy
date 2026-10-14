@@ -193,9 +193,9 @@ export default function ProfilePage() {
                     data-pressable=""
                     className="flex-1 h-11 rounded-[10px] text-[13px] font-medium no-select"
                     style={{
-                      backgroundColor: isSelected ? "var(--teal-soft)" : "var(--surface)",
-                      border: `0.5px solid ${isSelected ? "var(--teal)" : "var(--surface-border)"}`,
-                      color: isSelected ? "var(--teal-dark)" : "var(--ink)",
+                      backgroundColor: isSelected ? "var(--brand-rose)" : "var(--surface)",
+                      border: `0.5px solid ${isSelected ? "var(--brand-rose)" : "var(--surface-border)"}`,
+                      color: isSelected ? "#FFFFFF" : "var(--ink)",
                     }}
                   >
                     {lang.label}

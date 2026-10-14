@@ -77,11 +77,18 @@ function AddressRow({
   const TypeIcon = getTypeIcon(address.type);
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
       data-pressable=""
-      className="w-full flex items-center gap-3 rounded-[12px] p-3 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 no-select"
+      className="w-full flex items-center gap-3 rounded-[12px] p-3 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 no-select cursor-pointer"
       style={{
         backgroundColor: "var(--box)",
         minHeight: 48,
@@ -147,7 +154,7 @@ function AddressRow({
           <IconDots size={20} style={{ color: "var(--sub)" }} />
         </button>
       ) : null}
-    </button>
+    </div>
   );
 }
 
@@ -231,7 +238,7 @@ export default function AddressSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { addresses, currentId, selectAddress, deleteAddress, currentAddress } = useAddressStore();
+  const { addresses, currentId, selectAddress, deleteAddress, addAddress, currentAddress } = useAddressStore();
   const contentRef = useRef<HTMLDivElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -330,9 +337,48 @@ export default function AddressSheet({
     setAddSheetOpen(true);
   }, []);
 
-  const handleUseCurrentLocation = useCallback(() => {
-    // TODO: reverse-geocode and add/update address
-  }, []);
+  const handleUseCurrentLocation = useCallback(async () => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        // Reverse geocode via Nominatim (free)
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+            { headers: { "Accept-Language": "en" } }
+          );
+          const data = await res.json();
+          if (data?.address) {
+            const a = data.address;
+            const line = [
+              a.road || a.neighbourhood || "",
+              a.suburb || a.village || "",
+              a.city || a.town || a.state_district || "",
+              a.postcode || "",
+            ].filter(Boolean).join(", ");
+
+            addAddress({
+              id: `addr_geo_${Date.now()}`,
+              label: "Current Location",
+              type: "other" as const,
+              line: line || `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+            });
+          }
+        } catch {
+          addAddress({
+            id: `addr_geo_${Date.now()}`,
+            label: "Current Location",
+            type: "other" as const,
+            line: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+          });
+        }
+      },
+      () => { /* denied or error — geo-store handles feedback */ },
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
+  }, [addAddress]);
 
   // Drag-to-dismiss
   const { sheetRef, handlePointerDown, handlePointerMove, handlePointerUp } = useDragToDismiss({
@@ -362,6 +408,7 @@ export default function AddressSheet({
   return (
     <div
       className="fixed inset-0 z-50"
+      suppressHydrationWarning
       style={sheetVars}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

@@ -52,7 +52,8 @@
   --step-inactive: #e0cfd6;
 
   /* Card/sheet fills */
-  --card-fill: #ffffff;
+  --card-fill: #fff2f6;
+  --hero-card-bg: #fff2f6;
   --sheet-bg: #ffffff;
 
   /* Footer */
@@ -115,6 +116,7 @@
 
   /* Card/sheet fills */
   --card-fill: #1c1c1e;
+  --hero-card-bg: #1c1c1e;
   --sheet-bg: #1c1c1e;
 
   /* Footer — dark mode shade */
@@ -266,12 +268,12 @@ textarea {
 
 /* ── Hero Book now button ── */
 .hero-book-btn {
-  background-color: #FFFFFF;
-  color: #000000;
+  background-color: #B3225A;
+  color: #FFFFFF;
 }
 :root.dark .hero-book-btn {
-  background-color: var(--surface-border);
-  color: var(--ink);
+  background-color: #3D1230;
+  color: #FFFFFF;
 }
 
 /* ── Nav Logo dark/light swap ── */

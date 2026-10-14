@@ -4,12 +4,21 @@ import { cookies } from "next/headers.js";
 import { authService } from "../../auth/_init.ts";
 import { liveLocationRepo } from "../../../../server/repositories/live-location.repository.ts";
 import { BookingRepository } from "../../../../server/repositories/booking.repository.ts";
+import { isValidCoord, isReasonableSpeed, haversineMeters } from "../../../../server/lib/geo.ts";
 
 // In-memory rate limiting map: helper_id -> last request timestamp ms
 const helperLastPing = new Map<string, number>();
 
 // In-memory active bookings lookup for helpers (tracks in-memory/demo bookings during dev)
 export const helperActiveBookings = new Map<string, { booking_id: string; status: string; customer_id?: string; lat?: number; lng?: number }>();
+
+// Breadcrumb storage: booking_id -> array of {lat, lng, ts}
+const breadcrumbs = new Map<string, { lat: number; lng: number; ts: number }[]>();
+const MAX_BREADCRUMBS = 500;
+const MIN_BREADCRUMB_MOVE_M = 10;
+
+// Previous location for speed checks: helper_id -> {lat, lng, ts}
+const prevLocations = new Map<string, { lat: number; lng: number; ts: number }>();
 
 const locationSchema = z.object({
   lat: z.number().min(-90).max(90),
@@ -106,23 +115,46 @@ export async function POST(req: NextRequest) {
 
     const { lat, lng, accuracy_m, heading_deg, speed_mps, recorded_at } = parsed.data;
 
-    // 4. Reject timestamps more than 30 s off server time
+    // 4. Validate coordinates
+    if (!isValidCoord(lat, lng)) {
+      return NextResponse.json({ error: "Invalid coordinates (out of range or null island)" }, { status: 400 });
+    }
+
+    // 5. Reject timestamps more than 30 s off server time
     const recordedTimeMs = typeof recorded_at === "number" ? recorded_at : new Date(recorded_at).getTime();
     if (isNaN(recordedTimeMs) || Math.abs(now - recordedTimeMs) > 30000) {
       return NextResponse.json({ error: "Timestamp out of acceptable window (30s drift)" }, { status: 400 });
     }
 
-    // 5. Check if helper has an active booking in the sharing window ('assigned', 'on_the_way', 'arrived')
+    // 6. Check for impossible speed jumps (> 50 m/s ≈ 180 km/h)
+    const prev = prevLocations.get(helperId);
+    if (prev) {
+      const distFromPrev = haversineMeters({ lat, lng }, { lat: prev.lat, lng: prev.lng });
+      const timeDeltaMs = now - prev.ts;
+      if (timeDeltaMs > 0 && !isReasonableSpeed(distFromPrev, timeDeltaMs, 50)) {
+        // Suspicious jump — log and ignore this update
+        console.warn(`[Location] Impossible speed for helper ${helperId}: ${distFromPrev}m in ${timeDeltaMs}ms`);
+        return NextResponse.json({ ok: true, next_interval_ms: 4000, warning: "Jump too large, ignored" });
+      }
+    }
+    prevLocations.set(helperId, { lat, lng, ts: now });
+
+    // 7. Check if helper has an active booking (accepted or on_the_way)
     let activeBookingId: string | null = null;
 
     // Check in-memory / demo map first
     const memBooking = helperActiveBookings.get(helperId);
-    if (memBooking && ["assigned", "on_the_way", "arrived"].includes(memBooking.status)) {
+    if (memBooking && ["accepted", "on_the_way"].includes(memBooking.status)) {
       activeBookingId = memBooking.booking_id;
-    } else {
-      // Query DB if available
+    }
+
+    // Check DB
+    if (!activeBookingId) {
       try {
-        const dbBookings = await bookingRepo.findPendingOffers(helperId); // or query active bookings
+        const dbBooking = await bookingRepo.findActiveForHelper(helperId);
+        if (dbBooking) {
+          activeBookingId = dbBooking.id;
+        }
       } catch {
         // Ignore DB offline
       }
@@ -151,6 +183,19 @@ export async function POST(req: NextRequest) {
         recorded_at: new Date(recordedTimeMs),
       });
 
+      // Store breadcrumb if moved > MIN_BREADCRUMB_MOVE_M
+      const crumbs = breadcrumbs.get(activeBookingId) || [];
+      const lastCrumb = crumbs[crumbs.length - 1];
+      const shouldAddCrumb = !lastCrumb ||
+        haversineMeters({ lat, lng }, { lat: lastCrumb.lat, lng: lastCrumb.lng }) >= MIN_BREADCRUMB_MOVE_M;
+
+      if (shouldAddCrumb) {
+        crumbs.push({ lat, lng, ts: now });
+        // Cap breadcrumbs
+        while (crumbs.length > MAX_BREADCRUMBS) crumbs.shift();
+        breadcrumbs.set(activeBookingId, crumbs);
+      }
+
       return NextResponse.json({
         ok: true,
         next_interval_ms: 4000, // 4s polling during active trip
@@ -167,4 +212,9 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
   }
+}
+
+/** Clear breadcrumbs for a booking (called on completion) */
+export function clearBreadcrumbs(bookingId: string): void {
+  breadcrumbs.delete(bookingId);
 }
