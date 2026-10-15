@@ -13,6 +13,7 @@ import {
   IconCheck,
   IconPlus,
   IconMinus,
+  IconX,
   IconBath,
   IconToolsKitchen,
   IconHanger,
@@ -130,8 +131,8 @@ export default function ServiceDetailPage() {
               <div className="space-y-2">
                 {service.included.map((item) => (
                   <div key={item} className="flex items-start gap-1.5">
-                    <div className="w-4 h-4 rounded-full bg-sage-soft flex items-center justify-center shrink-0 mt-0.5">
-                      <IconCheck size={10} className="text-sage" strokeWidth={2.5} />
+                    <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5" style={{ backgroundColor: "#15803d" }}>
+                      <IconCheck size={10} className="text-white" strokeWidth={2.5} />
                     </div>
                     <span className="text-[12px] leading-[1.4] text-ink">{item}</span>
                   </div>
@@ -145,8 +146,8 @@ export default function ServiceDetailPage() {
               <div className="space-y-2">
                 {service.not_included.map((item) => (
                   <div key={item} className="flex items-start gap-1.5">
-                    <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5" style={{ backgroundColor: "var(--step-inactive)" }}>
-                      <IconMinus size={8} className="text-ink-muted" strokeWidth={2.5} />
+                    <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5" style={{ backgroundColor: "#dc2626" }}>
+                      <IconX size={8} className="text-white" strokeWidth={2.5} />
                     </div>
                     <span className="text-[12px] leading-[1.4] text-ink-muted">{item}</span>
                   </div>
