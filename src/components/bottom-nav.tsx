@@ -118,7 +118,7 @@ export default function BottomNav() {
               left: activeIndex === 0 ? pillLeftHome : pillLeftBookings,
               width: pillWidth,
               borderRadius: 14,
-              background: "color-mix(in srgb, var(--brand-rose) 12%, transparent)",
+              background: "color-mix(in srgb, var(--brand-rose) 6.5%, transparent)",
               transition: "left 280ms cubic-bezier(0.34, 1.4, 0.64, 1)",
               pointerEvents: "none",
               zIndex: 0,

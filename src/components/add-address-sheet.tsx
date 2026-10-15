@@ -129,7 +129,7 @@ export default function AddAddressSheet({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: "var(--app-bg)" }}>
+    <div className="fixed inset-0 z-[110] flex flex-col" style={{ backgroundColor: "var(--app-bg)" }}>
       {/* Header */}
       <div
         className="shrink-0 flex items-center gap-3 px-4"

@@ -8,6 +8,7 @@ import { NotificationProvider } from "@/lib/notification-store";
 import { ThemeProvider } from "@/lib/theme-store";
 import { GeoProvider } from "@/lib/geo-store";
 import { SwepyProvider } from "@/lib/swepy";
+import { DiwaliPreferenceProvider } from "@/lib/diwali-preference";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -18,7 +19,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             <PaymentProvider>
               <NotificationProvider>
                 <GeoProvider>
-                  <AddressProvider>{children}</AddressProvider>
+                  <AddressProvider>
+                    <DiwaliPreferenceProvider>{children}</DiwaliPreferenceProvider>
+                  </AddressProvider>
                 </GeoProvider>
               </NotificationProvider>
             </PaymentProvider>

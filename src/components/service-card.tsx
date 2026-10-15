@@ -77,14 +77,14 @@ export default function ServiceCard({
   const textColor = isHero ? "var(--ink)" : "var(--ink)";
   const subtextColor = isHero ? "var(--ink-muted)" : "var(--ink-muted)";
   
-  const tileHeight = isHero ? "h-32" : "h-24";
+  const tileHeight = isHero ? "h-[108px]" : "h-24";
   const tileBg = isHero ? "var(--brand-rose)" : "var(--app-bg)";
 
   return (
     <Link
       href={href}
       data-pressable=""
-      className={`flex flex-col rounded-[14px] ${isHero ? "pb-1.5" : "pb-3"} overflow-hidden no-underline outline-none focus-visible:outline-2 focus-visible:outline-offset-2 no-select min-h-[44px]`}
+      className={`flex flex-col rounded-[14px] ${isHero ? "pb-1" : "pb-3"} overflow-hidden no-underline outline-none focus-visible:outline-2 focus-visible:outline-offset-2 no-select min-h-[44px]`}
       style={{
         backgroundColor: cardBg,
         ...(isHero ? {} : { border: `0.5px solid var(--surface-border)` }),
@@ -113,22 +113,22 @@ export default function ServiceCard({
       </div>
 
       {/* Label row */}
-      <div className={`flex flex-col flex-1 px-3 pb-0 justify-between ${isHero ? "mt-2.5" : "mt-2"}`}>
-        <div className="flex items-start justify-between min-h-[34px]">
+      <div className={`flex flex-col flex-1 px-3 pb-0 justify-between ${isHero ? "mt-2" : "mt-2"}`}>
+        <div className="flex items-start justify-between min-h-[30px]">
           <div className="flex-1 min-w-0">
             <p
-              className={`text-[13px] font-medium leading-[1.3] line-clamp-2`}
+              className={`text-[13px] font-medium leading-[1.25] line-clamp-1`}
               style={{ color: textColor }}
             >
               {title}
             </p>
             {subtitle && (
-              <p className="text-[11px] leading-snug mt-0.5" style={{ color: subtextColor }}>
+              <p className="text-[11px] leading-tight mt-0.5 line-clamp-1" style={{ color: subtextColor }}>
                 {subtitle}
               </p>
             )}
             {price && (
-              <p className="text-[11px] leading-snug mt-1 font-medium" style={{ color: textColor }}>
+              <p className="text-[11px] leading-tight mt-0.5 font-medium" style={{ color: textColor }}>
                 {price}
               </p>
             )}
@@ -137,7 +137,7 @@ export default function ServiceCard({
         </div>
         
         {isHero && (
-          <div className="hero-book-btn mt-3 mb-0 w-full h-[30px] rounded-[8px] flex items-center justify-center text-[11px] font-bold tracking-wide uppercase shadow-sm">
+          <div className="hero-book-btn mt-2 mb-0.5 w-full h-[28px] rounded-[7px] flex items-center justify-center text-[10.5px] font-bold tracking-wide uppercase shadow-xs">
             Book now
           </div>
         )}

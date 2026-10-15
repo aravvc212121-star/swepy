@@ -23,6 +23,8 @@ import { usePaymentStore, getMethodLabel } from "@/lib/payment-store";
 import { useNotificationStore, getNotificationSummary } from "@/lib/notification-store";
 import { demoAddress } from "@/lib/mock-data";
 import { useTheme } from "@/lib/theme-store";
+import { isDiwaliActive } from "@/components/diwali-decor";
+import { useDiwaliPreference } from "@/lib/diwali-preference";
 
 /* ── Dark mode toggle icon (sun/moon) ── */
 function SunIcon({ size = 20 }: { size?: number }) {
@@ -52,6 +54,8 @@ export default function ProfilePage() {
   const payment = usePaymentStore();
   const notifs = useNotificationStore();
   const { theme, toggleTheme } = useTheme();
+  const { enabled: decorEnabled, toggleDecor } = useDiwaliPreference();
+  const showDiwaliToggle = isDiwaliActive();
   const [isStandaloneMode, setIsStandaloneMode] = useState(true);
 
   useEffect(() => {
@@ -258,6 +262,44 @@ export default function ProfilePage() {
                 <IconChevronRight size={16} className="text-ink-muted shrink-0" />
               </ListCardRow>
             </ListCard>
+          </div>
+        )}
+
+        {/* Festive Decorations toggle (only during Diwali season) */}
+        {showDiwaliToggle && (
+          <div className="mt-3">
+            <Card>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: 20 }} aria-hidden="true">🪔</span>
+                  <span className="text-[14px] font-medium" style={{ color: "var(--ink)" }}>
+                    {locale === "hi" ? "त्योहारी सजावट" : "Festive Decorations"}
+                  </span>
+                </div>
+                {/* Toggle switch */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={decorEnabled}
+                  aria-label="Festive Decorations"
+                  onClick={toggleDecor}
+                  className="relative w-[52px] h-[30px] rounded-full transition-colors duration-200 shrink-0"
+                  style={{
+                    backgroundColor: decorEnabled ? "var(--brand-rose)" : "var(--step-inactive)",
+                  }}
+                >
+                  <div
+                    className="absolute top-[3px] w-6 h-6 rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{
+                      transform: decorEnabled ? "translateX(24px)" : "translateX(3px)",
+                    }}
+                  />
+                </button>
+              </div>
+              <p className="text-[12px] mt-1.5" style={{ color: "var(--ink-muted)" }}>
+                {locale === "hi" ? "दिवाली की सजावट दिखाएँ या बंद करें" : "Show or hide Diwali decorations"}
+              </p>
+            </Card>
           </div>
         )}
 

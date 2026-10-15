@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAddressStore, type Address } from "@/lib/address-store";
 import { useGeo } from "@/lib/geo-store";
 import {
@@ -244,7 +245,12 @@ export default function AddressSheet({
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const historyPushed = useRef(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Lock body scroll when open
   useEffect(() => {
@@ -403,11 +409,11 @@ export default function AddressSheet({
     ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
     : false;
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50"
+      className="fixed inset-0 z-[100]"
       suppressHydrationWarning
       style={sheetVars}
       onPointerMove={handlePointerMove}
@@ -616,6 +622,7 @@ export default function AddressSheet({
 
       {/* Nested Add Address Sheet */}
       <AddAddressSheet open={addSheetOpen} onClose={() => setAddSheetOpen(false)} />
-    </div>
+    </div>,
+    document.body
   );
 }

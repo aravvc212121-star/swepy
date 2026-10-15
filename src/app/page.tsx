@@ -4,6 +4,7 @@ import AppShell from "@/components/app-shell";
 import BottomNav from "@/components/bottom-nav";
 import Footer from "@/components/footer";
 import Wordmark from "@/components/wordmark";
+import DiwaliDecor from "@/components/diwali-decor";
 import { SectionTitle } from "@/components/ui";
 import ServiceCard from "@/components/service-card";
 import LocationTrigger from "@/components/location-trigger";
@@ -31,8 +32,9 @@ export default function HomePage() {
       <AppShell noPaddingBottom>
         {/* ── Header wash: brand rose fade ── */}
         <div className="home-wash relative -mx-4 -mt-4 px-4 pt-4" style={{ paddingTop: "calc(16px + env(safe-area-inset-top, 0px))" }}>
+          <DiwaliDecor />
           {/* ── Top bar: wordmark + location + profile ── */}
-          <div className="flex items-center justify-between gap-3 mb-3 h-7">
+          <div className="flex items-center justify-between gap-3 mb-3 h-7 relative z-[2] mt-3">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <Wordmark inverted />
               <LocationTrigger />
@@ -51,7 +53,7 @@ export default function HomePage() {
           </div>
 
           {/* ── Hero Text ── */}
-          <div className="mt-0 mb-2">
+          <div className="mt-0 mb-2 relative z-[2]">
             <h2
               className="text-[20px] font-bold leading-[1.25] mb-1"
               style={{ color: "#FFFFFF" }}
@@ -65,10 +67,10 @@ export default function HomePage() {
           </div>
 
           {/* ── What do you need? ── */}
-          <div className="mt-3 mb-2">
+          <div className="mt-3 mb-2 relative z-[2]">
             <h3 className="text-[18px] font-medium" style={{ color: "#FFFFFF" }}>{t("home.whatDoYouNeed")}</h3>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 relative z-[2]">
             <ServiceCard
               slug="minor-clean"
               title={t("home.minorClean")}
@@ -97,8 +99,8 @@ export default function HomePage() {
 
         </div>
 
-        {/* ── Trust row (unchanged, starts on plain bg) ── */}
-        <div className="grid grid-cols-3 gap-2 mt-6">
+        {/* ── Trust row (starts on plain bg) ── */}
+        <div className="grid grid-cols-3 gap-2 mt-6 relative z-[2]">
           {trustItems.map((item, idx) => {
             const Icon = item.icon;
             const shiftClass =

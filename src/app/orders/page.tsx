@@ -150,17 +150,17 @@ function OrdersContent() {
   return (
     <AppShell className="!pt-2">
       {/* ── Top Header: Booking + Help ── */}
-      <div className="flex items-center justify-between pb-2 mb-3 border-b border-[var(--surface-border)]">
-        <h1 className="text-[15px] font-semibold text-ink tracking-tight">
+      <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-[var(--surface-border)]">
+        <h1 className="text-[19px] font-bold text-ink tracking-tight">
           {t("orders.title")}
         </h1>
         <Link
           href="/help"
-          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[12px] font-semibold text-ink transition-colors border border-[var(--surface-border)] bg-surface no-select shadow-xs hover:border-brand-rose/40"
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[13.5px] font-medium text-ink-muted transition-colors border border-[var(--surface-border)] bg-surface no-select shadow-xs hover:text-ink hover:border-[var(--ink-muted)]"
           data-pressable=""
         >
-          <IconHeadphones size={13.5} className="text-brand-rose shrink-0" />
-          <span>Help</span>
+          <IconHeadphones size={16} className="text-ink-muted shrink-0" />
+          <span>{t("orders.help") || "Help"}</span>
         </Link>
       </div>
 
