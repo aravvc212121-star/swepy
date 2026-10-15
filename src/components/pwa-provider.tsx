@@ -18,13 +18,54 @@ function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
 }
 
+import { usePathname } from "next/navigation";
+
 // ── PwaProvider ──
 export default function PwaProvider() {
+  const pathname = usePathname();
   const [showBanner, setShowBanner] = useState(false);
   const [showIOSSheet, setShowIOSSheet] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const deferredPrompt = useRef<any>(null);
   const swReg = useRef<ServiceWorkerRegistration | null>(null);
+
+  // Synchronize status bar theme-color dynamically per route
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const isHome = pathname === "/";
+    const isDark = document.documentElement.classList.contains("dark");
+    const targetColor = isHome
+      ? (isDark ? "#3D1230" : "#b3295b")
+      : (isDark ? "#000000" : "#ffffff");
+
+    // Update or create meta theme-color tags
+    const metaTags = document.querySelectorAll('meta[name="theme-color"]');
+    if (metaTags.length > 0) {
+      metaTags.forEach((tag) => tag.setAttribute("content", targetColor));
+    } else {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.content = targetColor;
+      document.head.appendChild(meta);
+    }
+
+    // Ensure Apple mobile web app meta tags are active
+    let appleCapable = document.querySelector('meta[name="apple-mobile-web-app-capable"]');
+    if (!appleCapable) {
+      appleCapable = document.createElement("meta");
+      appleCapable.setAttribute("name", "apple-mobile-web-app-capable");
+      appleCapable.setAttribute("content", "yes");
+      document.head.appendChild(appleCapable);
+    }
+    let appleStatus = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (!appleStatus) {
+      appleStatus = document.createElement("meta");
+      appleStatus.setAttribute("name", "apple-mobile-web-app-status-bar-style");
+      appleStatus.setAttribute("content", "black-translucent");
+      document.head.appendChild(appleStatus);
+    }
+  }, [pathname]);
 
   // Register SW
   useEffect(() => {

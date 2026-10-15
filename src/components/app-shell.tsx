@@ -9,16 +9,19 @@ import type { ReactNode } from "react";
 export default function AppShell({
   children,
   noPaddingBottom = false,
+  noPaddingTop = false,
   className = "",
 }: {
   children: ReactNode;
   noPaddingBottom?: boolean;
+  noPaddingTop?: boolean;
   className?: string;
 }) {
   return (
     <div
-      className={`w-full max-w-[430px] mx-auto min-h-dvh px-4 pt-4 bg-app-bg ${className}`}
+      className={`w-full max-w-[430px] mx-auto min-h-dvh px-4 bg-app-bg ${className}`}
       style={{
+        paddingTop: noPaddingTop ? 0 : "calc(16px + env(safe-area-inset-top, 0px))",
         paddingBottom: noPaddingBottom ? 0 : "calc(72px + env(safe-area-inset-bottom, 0px))",
       }}
     >

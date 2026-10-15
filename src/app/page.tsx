@@ -29,9 +29,9 @@ export default function HomePage() {
 
   return (
     <>
-      <AppShell noPaddingBottom>
+      <AppShell noPaddingBottom noPaddingTop>
         {/* ── Header wash: brand rose fade ── */}
-        <div className="home-wash relative -mx-4 -mt-4 px-4 pt-4" style={{ paddingTop: "calc(16px + env(safe-area-inset-top, 0px))" }}>
+        <div className="home-wash relative -mx-4 px-4" style={{ paddingTop: "calc(16px + env(safe-area-inset-top, 0px))" }}>
           <DiwaliDecor />
           {/* ── Top bar: wordmark + location + profile ── */}
           <div className="flex items-center justify-between gap-3 mb-3 h-7 relative z-[2] mt-3">

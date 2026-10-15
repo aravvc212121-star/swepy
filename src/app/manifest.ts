@@ -9,6 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/?source=pwa",
     scope: "/",
     display: "standalone",
+    display_override: ["window-controls-overlay", "standalone"],
     orientation: "portrait",
     background_color: "#b3295b",
     theme_color: "#b3295b",

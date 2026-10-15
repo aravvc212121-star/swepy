@@ -170,13 +170,13 @@ export default function DiwaliDecor() {
         <ChakraMandalaSVG size={170} />
       </div>
 
-      {/* ── 3. Toran (Marigold Garland tucked higher at very top) ── */}
+      {/* ── 3. Toran (Marigold Garland tucked at very top) ── */}
       <div
         aria-hidden="true"
         className="pointer-events-none select-none"
         style={{
           position: "absolute",
-          top: -8,
+          top: 0,
           left: 0,
           right: 0,
           zIndex: 0,
