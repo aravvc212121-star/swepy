@@ -80,15 +80,10 @@ export default function DiwaliDecor() {
           --diwali-cream: #FFF4D9;
         }
 
-        /* Prevent horizontal overflow/moving */
-        html, body {
-          overflow-x: hidden !important;
-          max-width: 100vw;
-        }
-
         .home-wash {
           padding-bottom: 38px !important;
-          overflow: hidden !important;
+          overflow-x: clip !important;
+          overflow-y: visible !important;
         }
 
         @keyframes diwaliTwinkle {
