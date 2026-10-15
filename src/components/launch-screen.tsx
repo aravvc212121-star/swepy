@@ -35,7 +35,7 @@ export default function LaunchScreen() {
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center"
+      className="fixed inset-0 z-[70] flex flex-col items-center justify-center"
       style={{
         backgroundColor: "#b3295b",
         opacity: fading ? 0 : 1,
@@ -43,6 +43,39 @@ export default function LaunchScreen() {
       }}
     >
       <BrandLogo size={96} priority />
+      {/* Wordmark */}
+      <span
+        className="text-2xl font-medium tracking-tight mt-4"
+        style={{ color: "#FFFFFF" }}
+      >
+        swepy
+        <span
+          className="inline-block rounded-full relative"
+          style={{
+            width: 5,
+            height: 5,
+            backgroundColor: "#F5B731",
+            top: -2,
+            marginLeft: 1,
+          }}
+        />
+      </span>
+      {/* Thin divider */}
+      <div
+        className="mt-3"
+        style={{
+          width: 40,
+          height: 1,
+          backgroundColor: "rgba(255,255,255,0.35)",
+        }}
+      />
+      {/* Tagline */}
+      <p
+        className="mt-2.5 text-[12px] font-normal tracking-wide"
+        style={{ color: "rgba(255,255,255,0.55)" }}
+      >
+        get your helper in minutes
+      </p>
     </div>
   );
 }
