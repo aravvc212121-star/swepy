@@ -4,6 +4,8 @@ import { cookies } from "next/headers.js";
 import { authService } from "../../auth/_init.ts";
 import { liveLocationRepo } from "../../../../server/repositories/live-location.repository.ts";
 import { BookingRepository } from "../../../../server/repositories/booking.repository.ts";
+import { helperRepo } from "../../../../server/repositories/helper.repository.ts";
+import { realtimeEvents } from "../../../../server/lib/realtime-events.ts";
 import { isValidCoord, isReasonableSpeed, haversineMeters } from "../../../../server/lib/geo.ts";
 
 // In-memory rate limiting map: helper_id -> last request timestamp ms
@@ -170,6 +172,9 @@ export async function POST(req: NextRequest) {
       activeBookingId = explicitBookingId;
     }
 
+    // Always update helper's live position in helperRepo so dispatch eligibility is fresh
+    await helperRepo.setOnlineStatus(helperId, true, lat, lng);
+
     if (activeBookingId) {
       // Helper is in active booking sharing window: upsert live location
       await liveLocationRepo.upsertLiveLocation({
@@ -196,9 +201,38 @@ export async function POST(req: NextRequest) {
         breadcrumbs.set(activeBookingId, crumbs);
       }
 
+      // Calculate ETA & sub-state (EN_ROUTE vs ARRIVED)
+      let subState: 'EN_ROUTE' | 'ARRIVED' = 'EN_ROUTE';
+      let etaMin = 1;
+      const order = await bookingRepo.getBooking(activeBookingId);
+      if (order) {
+        const uLat = order.address_snapshot?.lat || order.lat;
+        const uLng = order.address_snapshot?.lng || order.lng;
+        if (uLat && uLng) {
+          const distM = haversineMeters({ lat: uLat, lng: uLng }, { lat, lng });
+          subState = distM <= 50 ? 'ARRIVED' : 'EN_ROUTE';
+          etaMin = Math.max(1, Math.round(((distM / 1000) * 1.35 / 18) * 60));
+        }
+      }
+
+      // Emit realtime location:update
+      await realtimeEvents.emitLocationUpdate({
+        order_id: activeBookingId,
+        helper_id: helperId,
+        lat,
+        lng,
+        accuracy_m,
+        heading_deg: heading_deg ?? null,
+        speed_mps: speed_mps ?? null,
+        eta_minutes: etaMin,
+        sub_state: subState,
+      });
+
       return NextResponse.json({
         ok: true,
         next_interval_ms: 4000, // 4s polling during active trip
+        sub_state: subState,
+        eta_minutes: etaMin,
       });
     }
 

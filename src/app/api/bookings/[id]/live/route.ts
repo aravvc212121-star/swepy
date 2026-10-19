@@ -66,12 +66,16 @@ export async function POST(
         await liveLocationRepo.deleteRoute(id).catch(() => {});
         userLocations.delete(id);
         try {
-          await bookingRepo.updateBookingStatus(id, status as any);
+          await bookingRepo.updateBookingStatus(id, status as any, undefined, {
+            customer_id: existing?.customer_id || "customer",
+          });
         } catch { /* DB offline in dev */ }
       } else {
         // Try to update DB status
         try {
-          await bookingRepo.updateBookingStatus(id, status as any);
+          await bookingRepo.updateBookingStatus(id, status as any, undefined, {
+            customer_id: existing?.customer_id || "customer",
+          });
         } catch { /* DB offline in dev */ }
       }
     }
@@ -90,19 +94,17 @@ export async function GET(
     const now = new Date();
     const serverTimeStr = now.toISOString();
 
-    // 1. Resolve booking — prioritize DB, fallback to demo cache
+    // 1. Resolve booking — prioritize demo cache if set, then DB
     let booking: any = null;
-
-    // Try DB first
-    try {
-      booking = await bookingRepo.getBooking(id);
-    } catch {
-      // DB offline in dev
-    }
-
-    // Fallback to demo cache
-    if (!booking && demoBookings.has(id)) {
+    if (demoBookings.has(id)) {
       booking = demoBookings.get(id);
+    }
+    if (!booking) {
+      try {
+        booking = await bookingRepo.getBooking(id);
+      } catch {
+        // DB offline in dev
+      }
     }
 
     // Default mock fallback for dev if booking does not exist in DB yet
@@ -176,9 +178,9 @@ export async function GET(
     const bookingStatus = booking.status;
     const isSharingWindow = ["accepted", "on_the_way"].includes(bookingStatus);
 
-    // 3. Outside sharing window: return only status, clean up if terminal
+    // 3. Outside sharing window: return only status, clean up if terminal or in-progress
     if (!isSharingWindow) {
-      if (["completed", "cancelled"].includes(bookingStatus)) {
+      if (["completed", "cancelled", "in_progress"].includes(bookingStatus)) {
         await liveLocationRepo.deleteLiveLocation(id).catch(() => {});
         await liveLocationRepo.deleteRoute(id).catch(() => {});
         userLocations.delete(id);

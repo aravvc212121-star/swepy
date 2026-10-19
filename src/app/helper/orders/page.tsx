@@ -78,6 +78,8 @@ export default function HelperRequestsPage() {
   const [activeJob, setActiveJob] = useState<Booking | null>(null);
   const [otpInput, setOtpInput] = useState("");
   const [otpError, setOtpError] = useState(false);
+  const [otpErrorMsg, setOtpErrorMsg] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [countdowns, setCountdowns] = useState<Record<string, number>>({});
 
@@ -99,7 +101,7 @@ export default function HelperRequestsPage() {
   const roadWaypointsRef = useRef<[number, number][]>([]);
   const roadWaypointIdxRef = useRef<number>(0);
 
-  // Restore active job from store
+  // Restore active job from store and from server active endpoint
   useEffect(() => {
     if (!session) return;
     const active = store.getActiveBookingForHelper(session.user_id);
@@ -115,6 +117,31 @@ export default function HelperRequestsPage() {
     } else {
       setActiveJob(null);
     }
+
+    // Also sync from backend active endpoint
+    fetch(`/api/helper/active?helperId=${session.user_id}`, {
+      headers: { "x-helper-id": session.user_id },
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.active) {
+          const s = String(data.active.status).toLowerCase();
+          if (["accepted", "confirmed", "in_progress"].includes(s)) {
+            setActiveJob(prev => ({
+              ...(prev || {}),
+              ...data.active,
+              status: s as any,
+              lat: data.active.address_snapshot?.lat || data.active.lat || 28.6139,
+              lng: data.active.address_snapshot?.lng || data.active.lng || 77.2090,
+              address_full: data.active.address_snapshot?.address_full || data.active.address_short || "Customer Location",
+              address_short: data.active.address_snapshot?.address_short || "Customer Location",
+              service_name: data.active.service_code || data.active.service_name || "Home Help",
+              home_size: data.active.home_size || "1 BHK",
+            }));
+          }
+        }
+      })
+      .catch(() => {});
   }, [session, store]);
 
   // Pre-fetch road route for active job
@@ -493,10 +520,6 @@ export default function HelperRequestsPage() {
     const userLat = req.user_lat || 28.6139;
     const userLng = req.user_lng || 77.2090;
 
-    // Check store for existing booking or fallback OTP
-    const existing = store.getBooking(req.booking_id);
-    const bookingOtp = req.otp || existing?.otp || "4821";
-
     let helperStartLat = myLatRef.current;
     let helperStartLng = myLngRef.current;
     const curDist = haversine({ lat: helperStartLat, lng: helperStartLng }, { lat: userLat, lng: userLng });
@@ -523,7 +546,7 @@ export default function HelperRequestsPage() {
       lat: userLat,
       lng: userLng,
       price: req.price,
-      otp: bookingOtp,
+      // Helper NEVER receives the OTP
       status: "accepted",
       helper_id: session.user_id,
       helper_name: session.name,
@@ -555,7 +578,6 @@ export default function HelperRequestsPage() {
       helper_name: session.name,
       lat: helperStartLat,
       lng: helperStartLng,
-      otp: bookingOtp,
       ts: Date.now(),
       sender: session.user_id,
     });
@@ -563,7 +585,14 @@ export default function HelperRequestsPage() {
 
   const handleDecline = useCallback((bookingId: string) => {
     setRequests(prev => prev.filter(r => r.booking_id !== bookingId));
-  }, []);
+    if (session) {
+      fetch(`/api/bookings/${bookingId}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ helperId: session.user_id, reason: "Helper declined offer" }),
+      }).catch(console.error);
+    }
+  }, [session]);
 
   // Job step controls
   const advanceJobStatus = useCallback((nextStatus: string) => {
@@ -745,36 +774,34 @@ export default function HelperRequestsPage() {
     return () => clearInterval(interval);
   }, [activeJob?.id, activeJob?.status, session, store, transport]);
 
-  const handleStartTrip = () => {
-    advanceJobStatus("on_the_way");
-    if (activeJob && session) {
-      transport.send({
-        type: "job_location",
-        booking_id: activeJob.id,
-        lat: myLatRef.current,
-        lng: myLngRef.current,
-        heading_deg: myHeadingRef.current ?? 0,
-        speed_mps: 3.5,
-        ts: Date.now(),
-        sender: session.user_id,
+  const handleOtpSubmit = async () => {
+    if (!activeJob || otpInput.length < 4) return;
+    setIsVerifying(true);
+    setOtpError(false);
+    setOtpErrorMsg(null);
+    try {
+      const res = await fetch(`/api/bookings/${activeJob.id}/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          helperId: session.user_id,
+          code: otpInput,
+        }),
       });
-    }
-  };
-
-  const handleArrived = () => advanceJobStatus("arrived");
-
-  const handleOtpSubmit = () => {
-    if (!activeJob) return;
-    const storeBooking = store.getBooking(activeJob.id);
-    const expected = activeJob.otp || storeBooking?.otp;
-    if (expected && otpInput === expected) {
-      setOtpError(false);
-      advanceJobStatus("completed");
-      setTimeout(() => {
-        setActiveJob(null);
-      }, 2500);
-    } else {
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setOtpError(false);
+        setOtpErrorMsg(null);
+        advanceJobStatus("confirmed");
+      } else {
+        setOtpError(true);
+        setOtpErrorMsg(data.error || data.message || "Incorrect OTP");
+      }
+    } catch {
       setOtpError(true);
+      setOtpErrorMsg("Failed to verify OTP. Please try again.");
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -782,7 +809,7 @@ export default function HelperRequestsPage() {
     advanceJobStatus("completed");
     setTimeout(() => {
       setActiveJob(null);
-    }, 2500);
+    }, 2000);
   };
 
   const handleCancelJob = useCallback(() => {
@@ -977,30 +1004,8 @@ export default function HelperRequestsPage() {
               </a>
             )}
 
-            {/* JOB-STEP CONTROLS */}
-            {activeJob.status === "accepted" && (
-              <button
-                type="button"
-                onClick={handleStartTrip}
-                className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer active:scale-98 transition-transform"
-                style={{ backgroundColor: HELPER_TOKENS.colors.brand }}
-              >
-                Start trip
-              </button>
-            )}
-
-            {activeJob.status === "on_the_way" && (
-              <button
-                type="button"
-                onClick={handleArrived}
-                className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer active:scale-98 transition-transform"
-                style={{ backgroundColor: HELPER_TOKENS.colors.brand }}
-              >
-                I have arrived
-              </button>
-            )}
-
-            {activeJob.status === "arrived" && (
+            {/* JOB-STEP CONTROLS: Show ONLY OTP input field with Confirm button when accepted */}
+            {["accepted", "on_the_way", "arrived"].includes(activeJob.status) && (
               <div className="py-2.5 flex flex-col items-center">
                 <div
                   className="w-11 h-11 rounded-full flex items-center justify-center mb-2 select-none"
@@ -1012,7 +1017,7 @@ export default function HelperRequestsPage() {
                   <IconShieldCheck size={22} />
                 </div>
                 <h3 className="text-[16px] font-semibold text-ink text-center leading-tight">
-                  Enter Start Code
+                  Enter 4-Digit OTP
                 </h3>
                 <p className="text-[13px] text-ink-muted text-center mt-1 mb-3.5 max-w-[280px] leading-snug">
                   Ask customer for the 4-digit code shown on their tracking screen.
@@ -1036,6 +1041,7 @@ export default function HelperRequestsPage() {
                         const nextOtp = arr.join("").slice(0, 4);
                         setOtpInput(nextOtp);
                         setOtpError(false);
+                        setOtpErrorMsg(null);
                         if (val && i < 3) {
                           const next = e.target.parentElement?.children[i + 1] as HTMLInputElement;
                           next?.focus();
@@ -1053,6 +1059,7 @@ export default function HelperRequestsPage() {
                         if (pasted) {
                           setOtpInput(pasted);
                           setOtpError(false);
+                          setOtpErrorMsg(null);
                           const lastIdx = Math.min(3, pasted.length - 1);
                           const target = e.currentTarget.parentElement?.children[lastIdx] as HTMLInputElement;
                           target?.focus();
@@ -1080,33 +1087,46 @@ export default function HelperRequestsPage() {
 
                 {otpError && (
                   <p className="text-[12px] font-medium text-center my-1.5" style={{ color: "#B3261E" }}>
-                    Wrong OTP. Please enter the 4-digit code shown on customer's screen.
+                    {otpErrorMsg || "Incorrect OTP"}
                   </p>
                 )}
 
                 <button
                   type="button"
                   onClick={handleOtpSubmit}
-                  disabled={otpInput.length < 4}
+                  disabled={otpInput.length < 4 || isVerifying}
                   className="w-full h-12 mt-2.5 rounded-[14px] text-[15px] font-medium text-white shadow-sm cursor-pointer transition-transform active:scale-98"
                   style={{
-                    backgroundColor: otpInput.length < 4 ? "#D6D1CE" : HELPER_TOKENS.colors.brand,
+                    backgroundColor: otpInput.length < 4 || isVerifying ? "#D6D1CE" : HELPER_TOKENS.colors.brand,
                   }}
                 >
-                  Verify Code & Complete Order
+                  {isVerifying ? "Verifying..." : "Confirm"}
                 </button>
               </div>
             )}
 
-            {activeJob.status === "in_progress" && (
-              <button
-                type="button"
-                onClick={handleComplete}
-                className="w-full h-12 rounded-[12px] text-[15px] font-medium text-white shadow-sm cursor-pointer active:scale-98 transition-transform"
-                style={{ backgroundColor: "#2D6A4F" }}
-              >
-                Complete job
-              </button>
+            {/* When CONFIRMED: Show Order confirmed banner and Complete job button */}
+            {(["confirmed", "CONFIRMED"].includes(activeJob.status) || activeJob.status === "in_progress") && (
+              <div className="py-3 flex flex-col items-center text-center">
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
+                  style={{ backgroundColor: "rgba(45, 106, 79, 0.12)" }}
+                >
+                  <IconCheck size={24} style={{ color: "#2D6A4F" }} strokeWidth={2.5} />
+                </div>
+                <h3 className="text-[17px] font-bold text-ink mb-1">Order confirmed</h3>
+                <p className="text-[13px] text-ink-muted mb-4 max-w-[280px]">
+                  Start code verified successfully. You can now perform and complete the service.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleComplete}
+                  className="w-full h-12 rounded-[14px] text-[15px] font-medium text-white shadow-sm cursor-pointer transition-transform active:scale-98"
+                  style={{ backgroundColor: "#2D6A4F" }}
+                >
+                  Complete job
+                </button>
+              </div>
             )}
 
             {activeJob.status === "completed" && (

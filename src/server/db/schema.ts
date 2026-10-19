@@ -172,12 +172,24 @@ export const booking_offers = pgTable("booking_offers", {
   helper_id: text("helper_id").notNull().references(() => users.id),
   wave: integer("wave").notNull().default(1),
   status: text("status").notNull().default("pending"),
+  radius_km: numeric("radius_km", { precision: 4, scale: 2 }),
+  eta_minutes: integer("eta_minutes"),
   offered_at: timestamp("offered_at", { withTimezone: true }).notNull().defaultNow(),
   expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
   responded_at: timestamp("responded_at", { withTimezone: true }),
   reject_reason: text("reject_reason"),
   distance_m: integer("distance_m"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const order_events = pgTable("order_events", {
+  id: text("id").primaryKey(),
+  order_id: text("order_id").notNull().references(() => bookings.id),
+  from_state: text("from_state"),
+  to_state: text("to_state").notNull(),
+  actor: text("actor").notNull(),
+  payload: jsonb("payload"),
+  timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const booking_events = pgTable("booking_events", {

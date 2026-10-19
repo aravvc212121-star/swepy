@@ -82,18 +82,35 @@ export default function SearchingPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // On mount: check for an existing active booking first
+  // On mount: check for an existing active booking first (local store + API)
   useEffect(() => {
     if (!ready || !session) return;
     const active = store.getActiveBookingForUser(session.user_id);
-    if (active && active.status === "searching") {
+    if (active && (active.status === "searching" || active.status === "SEARCHING")) {
       // Already searching, resume
       setBookingId(active.id);
       bookingRef.current = active;
-    } else if (active && active.status !== "searching") {
+    } else if (active && active.status !== "searching" && active.status !== "SEARCHING") {
       // Already has a helper assigned — jump straight to tracking
       router.replace(`/booking/${active.id}`);
+      return;
     }
+
+    // Also verify against backend active order endpoint
+    fetch("/api/bookings/active")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.booking) {
+          const b = data.booking;
+          const status = (b.status || "").toLowerCase();
+          if (status === "searching") {
+            setBookingId(b.id);
+          } else if (["accepted", "confirmed", "on_the_way", "arrived", "in_progress"].includes(status)) {
+            router.replace(`/booking/${b.id}`);
+          }
+        }
+      })
+      .catch(() => {});
   }, [ready, session, store, router]);
 
   // Listen for helper location pings and acceptance
@@ -120,36 +137,59 @@ export default function SearchingPage() {
         setHelpers(prev => { const next = new Map(prev); next.delete(event.helper_id); return next; });
       }
 
+      // No helper found notification
+      if (event.type === "order:no_helper_found" || (event as any).event === "order:no_helper_found") {
+        if (searchTimerRef.current) {
+          clearInterval(searchTimerRef.current);
+          searchTimerRef.current = null;
+        }
+        if (bookingId) {
+          router.replace(`/booking/${bookingId}`);
+        }
+      }
+
       // Helper accepted our booking -> navigate immediately to tracking with OTP
-      if (event.type === "booking_accept") {
-        const b = bookingRef.current || (bookingId ? store.getBooking(bookingId) : null) || store.getBooking(event.booking_id);
-        const targetId = event.booking_id || b?.id;
+      if (
+        event.type === "booking_accept" ||
+        event.type === "order:accepted" ||
+        (event as any).event === "order:accepted"
+      ) {
+        const evt = event as any;
+        const b = bookingRef.current || (bookingId ? store.getBooking(bookingId) : null) || store.getBooking(evt.booking_id || evt.order_id);
+        const targetId = evt.booking_id || evt.order_id || b?.id;
+        const helperId = evt.helper?.id || evt.helper_id;
+        const helperName = evt.helper?.name || evt.helper_name || "Helper";
+        const lat = evt.helper_location?.lat ?? evt.lat;
+        const lng = evt.helper_location?.lng ?? evt.lng;
+        const otp = evt.otp || b?.otp;
 
         if (targetId && (!b || b.id === targetId)) {
           if (b) {
             store.updateBooking(b.id, {
               status: "accepted",
-              helper_id: event.helper_id,
-              helper_name: event.helper_name,
-              helper_lat: event.lat,
-              helper_lng: event.lng,
+              helper_id: helperId,
+              helper_name: helperName,
+              helper_lat: lat,
+              helper_lng: lng,
+              ...(otp ? { otp } : {}),
             });
             bookingRef.current = {
               ...b,
               status: "accepted" as const,
-              helper_id: event.helper_id,
-              helper_name: event.helper_name,
-              helper_lat: event.lat,
-              helper_lng: event.lng,
+              helper_id: helperId,
+              helper_name: helperName,
+              helper_lat: lat,
+              helper_lng: lng,
+              ...(otp ? { otp } : {}),
             };
 
             // Broadcast assigned to lock in the match
             transport.send({
               type: "booking_assigned",
               booking_id: b.id,
-              helper_id: event.helper_id,
-              helper_name: event.helper_name,
-              otp: b.otp,
+              helper_id: helperId,
+              helper_name: helperName,
+              otp: otp || b.otp,
               address_full: b.address_full,
               service_name: b.service_name,
               home_size: b.home_size,

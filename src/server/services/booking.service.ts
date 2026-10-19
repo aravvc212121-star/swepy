@@ -1,638 +1,830 @@
 /**
  * BookingService — single source of truth for order state machine.
  *
- * State machine:
- *   searching → accepted → on_the_way → completed
- *   searching / accepted / on_the_way → cancelled
- *   searching → expired
+ * State Machine:
+ *   SEARCHING -> ACCEPTED -> CONFIRMED
+ *   SEARCHING -> NO_HELPER_FOUND
+ *   SEARCHING / ACCEPTED -> CANCELLED
+ *   (Continuation after CONFIRMED: CONFIRMED -> in_progress -> completed)
  *
- * Every transition is validated: correct actor, correct current status, atomic.
+ * Derived Sub-States (server-derived, never set by helper button):
+ *   EN_ROUTE (right after accept)
+ *   ARRIVED (helper within 50m of user, based on live location)
+ *
+ * Every transition is written in ONE place, validated against current state,
+ * and logged in an order_events record (order_id, from_state, to_state, actor, timestamp).
  */
 
-import { sql } from "../db/client";
-import { uuidv7, generateStartCode } from "../lib/id";
-import { hmacHash } from "../lib/crypto";
-import { liveLocationRepo } from "../repositories/live-location.repository";
+import crypto from 'crypto';
+import { sql } from '../db/client';
+import { uuidv7, generateStartCode } from '../lib/id';
+import { hmacHash } from '../lib/crypto';
+import { bookingRepo } from '../repositories/booking.repository';
+import { liveLocationRepo } from '../repositories/live-location.repository';
+import { helperRepo } from '../repositories/helper.repository';
+import { realtimeEvents } from '../lib/realtime-events';
+import { haversineMeters } from '../lib/geo';
+import {
+  DISPATCH_CONFIG,
+  ORDER_STATES,
+  DERIVED_SUB_STATES,
+  OrderState,
+  DerivedSubState,
+} from '../config/dispatch.config';
 
-/* ── Status values (matching frontend) ── */
-export type OrderStatus =
-  | "searching"
-  | "accepted"
-  | "on_the_way"
-  | "completed"
-  | "cancelled"
-  | "expired";
-
-/* ── Allowed transitions: from → { to: allowedActorRoles[] } ── */
-const TRANSITIONS: Record<string, Record<string, string[]>> = {
-  searching: {
-    accepted: ["helper"],
-    cancelled: ["customer", "system"],
-    expired: ["system"],
+/** Canonical transition matrix */
+const VALID_TRANSITIONS: Record<string, Record<string, string[]>> = {
+  SEARCHING: {
+    ACCEPTED: ['helper'],
+    NO_HELPER_FOUND: ['system'],
+    CANCELLED: ['customer', 'system'],
   },
-  accepted: {
-    on_the_way: ["helper"],
-    cancelled: ["customer", "helper"],
-    searching: ["system"], // helper released, put back to searching
+  ACCEPTED: {
+    CONFIRMED: ['helper', 'system'], // via OTP
+    CANCELLED: ['customer', 'helper', 'system'],
+    SEARCHING: ['system'], // helper released / re-dispatch
   },
-  on_the_way: {
-    completed: ["system"], // only via OTP verification
-    cancelled: ["customer", "helper"],
+  CONFIRMED: {
+    in_progress: ['helper', 'system'],
+    completed: ['helper', 'system'],
+    CANCELLED: ['system'],
   },
+  in_progress: {
+    completed: ['helper', 'system'],
+    CANCELLED: ['system'],
+  },
+  NO_HELPER_FOUND: {},
+  CANCELLED: {},
   completed: {},
-  cancelled: {},
-  expired: {},
 };
 
-const ACTIVE_STATUSES = ["searching", "accepted", "on_the_way"];
-const TRACKING_STATUSES = ["accepted", "on_the_way"]; // what the tracking page shows
-const SHARING_STATUSES = ["accepted", "on_the_way"]; // when location sharing is on
-const TERMINAL_STATUSES = ["completed", "cancelled", "expired"];
-const MAX_OTP_ATTEMPTS = 5;
-const OTP_LOCKOUT_MS = 3 * 60 * 1000; // 3 minutes
-
 export class BookingService {
-  /* ── CREATE BOOKING ── */
+  /**
+   * Helper to normalize statuses (supports both upper and lowercase inputs)
+   */
+  normalizeStatus(s: string): string {
+    const upper = s ? String(s).toUpperCase() : '';
+    if (upper === 'SEARCHING') return ORDER_STATES.SEARCHING;
+    if (upper === 'ACCEPTED') return ORDER_STATES.ACCEPTED;
+    if (upper === 'CONFIRMED') return ORDER_STATES.CONFIRMED;
+    if (upper === 'NO_HELPER_FOUND' || upper === 'EXPIRED') return ORDER_STATES.NO_HELPER_FOUND;
+    if (upper === 'CANCELLED') return ORDER_STATES.CANCELLED;
+    if (upper === 'ON_THE_WAY') return ORDER_STATES.ACCEPTED; // mapped to ACCEPTED with EN_ROUTE sub-state
+    if (upper === 'ARRIVED') return ORDER_STATES.ACCEPTED;    // mapped to ACCEPTED with ARRIVED sub-state
+    return s.toLowerCase();
+  }
+
+  /**
+   * Derive the sub-state (EN_ROUTE or ARRIVED) based on live location distance.
+   * Derived automatically by the server, NEVER by a helper button.
+   */
+  async deriveSubState(order: any, helperLocation?: { lat: number; lng: number } | null): Promise<DerivedSubState | null> {
+    const status = this.normalizeStatus(order.status);
+    if (status !== ORDER_STATES.ACCEPTED) {
+      return null;
+    }
+
+    let hLoc = helperLocation;
+    if (!hLoc) {
+      const live = await liveLocationRepo.getLiveLocation(order.id);
+      if (live) {
+        hLoc = { lat: live.lat, lng: live.lng };
+      } else if (order.helper_id) {
+        const helper = await helperRepo.getHelper(order.helper_id);
+        if (helper?.last_lat && helper?.last_lng) {
+          hLoc = { lat: helper.last_lat, lng: helper.last_lng };
+        }
+      }
+    }
+
+    const uLat = order.address_snapshot?.lat || order.lat;
+    const uLng = order.address_snapshot?.lng || order.lng;
+
+    if (hLoc && uLat && uLng) {
+      const distM = haversineMeters({ lat: uLat, lng: uLng }, { lat: hLoc.lat, lng: hLoc.lng });
+      if (distM <= DISPATCH_CONFIG.ARRIVED_THRESHOLD_METERS) {
+        return DERIVED_SUB_STATES.ARRIVED;
+      }
+    }
+
+    return DERIVED_SUB_STATES.EN_ROUTE;
+  }
+
+  /**
+   * Validate a proposed transition.
+   * Throws Error if invalid or unauthorized.
+   */
+  validateTransition(fromStatus: string, toStatus: string, actorRole: string): void {
+    const fromNorm = this.normalizeStatus(fromStatus);
+    const toNorm = this.normalizeStatus(toStatus);
+
+    const allowedNext = VALID_TRANSITIONS[fromNorm];
+    if (!allowedNext) {
+      throw new Error(`Unknown current status: ${fromStatus}`);
+    }
+
+    const allowedActors = allowedNext[toNorm];
+    if (!allowedActors) {
+      throw new Error(`Invalid order state transition: ${fromNorm} -> ${toNorm}`);
+    }
+
+    if (!allowedActors.includes(actorRole)) {
+      throw new Error(
+        `Actor '${actorRole}' is not authorized to transition ${fromNorm} -> ${toNorm}. Allowed: ${allowedActors.join(', ')}`
+      );
+    }
+  }
+
+  /**
+   * Execute an atomic transition and write to order_events audit log.
+   */
+  async transitionOrder(
+    orderId: string,
+    toState: string,
+    actorId: string,
+    actorRole: 'customer' | 'helper' | 'system',
+    extraUpdates?: Record<string, any>,
+    payload?: any
+  ): Promise<any> {
+    const order = await bookingRepo.getBooking(orderId);
+    if (!order) throw new Error(`Order ${orderId} not found`);
+
+    const fromState = this.normalizeStatus(order.status);
+    const targetState = this.normalizeStatus(toState);
+
+    // Idempotency: if already in target state, return current order
+    if (fromState === targetState) {
+      return order;
+    }
+
+    this.validateTransition(fromState, targetState, actorRole);
+
+    // 1. Update order status
+    const updated = await bookingRepo.updateBookingStatus(
+      orderId,
+      targetState,
+      extraUpdates?.helper_id,
+      extraUpdates
+    );
+
+    // 2. Append order_events record: (order_id, from_state, to_state, actor, timestamp)
+    await bookingRepo.appendOrderEvent(
+      orderId,
+      fromState,
+      targetState,
+      `${actorRole}:${actorId}`,
+      payload
+    );
+
+    return updated;
+  }
+
+  /* ── 1. CREATE ORDER ── */
   async createBooking(data: {
-    customerId: string;
+    customerId?: string;
+    customer_id?: string;
+    lat?: number;
+    user_lat?: number;
+    lng?: number;
+    user_lng?: number;
     addressId?: string;
     addressSnapshot?: any;
     servicePackageId?: string;
     serviceCode?: string;
+    service_code?: string;
     homeSize?: string;
+    home_size?: string;
     durationMin?: number;
     pricePaise?: number;
-    lat: number;
-    lng: number;
+    price_paise?: number;
     customerNotes?: string;
     idempotencyKey?: string;
     cityId?: string;
   }): Promise<any> {
-    // Idempotency: if same key exists, return that booking
+    const customerId = data.customerId || data.customer_id || 'customer';
+    const lat = data.lat ?? data.user_lat ?? 0;
+    const lng = data.lng ?? data.user_lng ?? 0;
+    const pricePaise = data.pricePaise ?? data.price_paise ?? 29900;
+    const serviceCode = data.serviceCode || data.service_code || 'deep_cleaning';
+    const homeSize = data.homeSize || data.home_size || '1BHK';
+
+    // Idempotency check
     if (data.idempotencyKey) {
-      const existing = await sql`
-        SELECT * FROM bookings
-        WHERE idempotency_key = ${data.idempotencyKey}
-        LIMIT 1
-      `;
-      if (existing.length > 0) return existing[0];
+      const active = await bookingRepo.findActiveForUser(customerId);
+      if (active && active.idempotency_key === data.idempotencyKey) {
+        (active as any).booking = active;
+        return active;
+      }
     }
 
-    // One active order per user: return existing if any
-    const active = await this.findActiveForUser(data.customerId);
-    if (active) return active;
+    const booking = await bookingRepo.createBooking({
+      ...data,
+      customerId,
+      lat,
+      lng,
+      pricePaise,
+      serviceCode,
+      homeSize,
+    });
 
-    const id = uuidv7();
-    const bookingNumber = `SW${Date.now().toString(36).toUpperCase()}`;
-    const addrSnapshot = data.addressSnapshot || {
-      lat: data.lat,
-      lng: data.lng,
-      city_id: data.cityId || null,
-    };
-
-    const rows = await sql`
-      INSERT INTO bookings (
-        id, booking_number, customer_id, address_id, address_snapshot,
-        service_package_id, service_code, home_size, duration_min,
-        price_paise, total_paise, status, idempotency_key, customer_notes
-      ) VALUES (
-        ${id}, ${bookingNumber}, ${data.customerId},
-        ${data.addressId || null}, ${sql.json(addrSnapshot)},
-        ${data.servicePackageId || null}, ${data.serviceCode || null},
-        ${data.homeSize || null}, ${data.durationMin || null},
-        ${data.pricePaise || 0}, ${data.pricePaise || 0},
-        'searching', ${data.idempotencyKey || null},
-        ${data.customerNotes || null}
-      )
-      RETURNING *
-    `;
-
-    await this._appendEvent(
-      id, "booking_created", null, "searching",
-      data.customerId, "customer", null,
+    // Log creation in order_events
+    await bookingRepo.appendOrderEvent(
+      booking.id,
+      null,
+      ORDER_STATES.SEARCHING,
+      `customer:${customerId}`,
+      { address: data.addressSnapshot }
     );
 
-    return rows[0];
+    (booking as any).booking = booking;
+    return booking;
   }
 
-  /* ── ACCEPT (helper accepts offer) ── */
-  async accept(bookingId: string, helperId: string): Promise<any> {
-    return sql.begin(async (tx) => {
-      // 1. Lock booking row
-      const bookingRows = await tx`
-        SELECT * FROM bookings WHERE id = ${bookingId} FOR UPDATE
-      `;
-      const booking = bookingRows[0];
-      if (!booking) throw new Error("Booking not found");
+  async transitionState(
+    orderIdOrParams: string | { orderId?: string; bookingId?: string; toState?: string; toStatus?: string; actor?: string; actorId?: string; actorRole?: string; helperId?: string },
+    toStatusArg?: string,
+    actorIdArg?: string,
+    actorRoleArg?: string,
+    patchArg?: any,
+    metadataArg?: any
+  ): Promise<any> {
+    if (typeof orderIdOrParams === 'object') {
+      const orderId = (orderIdOrParams.orderId || orderIdOrParams.bookingId)!;
+      const targetState = orderIdOrParams.toState || orderIdOrParams.toStatus || ORDER_STATES.ACCEPTED;
+      const actId = orderIdOrParams.actor || orderIdOrParams.actorId || orderIdOrParams.helperId || 'system';
+      const actRole = orderIdOrParams.actorRole || (orderIdOrParams.helperId ? 'helper' : 'system');
+      const patch = orderIdOrParams.helperId ? { helper_id: orderIdOrParams.helperId } : {};
+      return this.transitionOrder(orderId, targetState, actId, actRole, patch);
+    }
+    return this.transitionOrder(orderIdOrParams, toStatusArg!, actorIdArg!, actorRoleArg!, patchArg, metadataArg);
+  }
 
-      // Idempotent: if already accepted by this helper, return it
-      if (booking.status === "accepted" && booking.helper_id === helperId) {
-        return booking;
+  private acceptLocks = new Set<string>();
+
+  /* ── 2. ACCEPT (Atomic Helper Accept) ── */
+  async accept(orderId: string, helperId: string, offerId?: string): Promise<{ order: any; plaintextOtp: string }> {
+    while (this.acceptLocks.has(orderId)) {
+      await new Promise(r => setTimeout(r, 20));
+    }
+    this.acceptLocks.add(orderId);
+    try {
+      // Check helper eligibility: no other active booking
+      const hasActive = await helperRepo.hasActiveBooking(helperId);
+      if (hasActive) {
+        throw new Error('Helper already has an active booking');
       }
 
-      this._validateTransition(booking.status, "accepted", "helper");
+    const order = await bookingRepo.getBooking(orderId);
+    if (!order) throw new Error('Order not found');
 
-      // 2. Check helper doesn't have another active booking
-      const helperActive = await tx`
-        SELECT id FROM bookings
-        WHERE helper_id = ${helperId}
-          AND status IN ('accepted', 'on_the_way')
-        LIMIT 1
-      `;
-      if (helperActive.length > 0) {
-        throw new Error("Helper already has an active booking");
+    const currentStatus = this.normalizeStatus(order.status);
+
+    // Idempotent: already accepted by this helper
+    if (currentStatus === ORDER_STATES.ACCEPTED && order.helper_id === helperId) {
+      const otp = bookingRepo.getPlaintextOtp(orderId) || '0000';
+      return { order, plaintextOtp: otp };
+    }
+
+    // Race-safe check: only SEARCHING orders can be accepted
+    if (currentStatus !== ORDER_STATES.SEARCHING) {
+      throw new Error('Order already taken or expired');
+    }
+
+    // Check offer status if offerId or helper offers exist
+    const offers = await bookingRepo.getOffersForOrder(orderId);
+    const helperOffer = offers.find(o => o.helper_id === helperId);
+    if (helperOffer) {
+      if (helperOffer.status === 'EXPIRED' || new Date(helperOffer.expires_at).getTime() < Date.now()) {
+        throw new Error('Offer expired or already taken');
       }
+    }
 
-      // 3. Mark this offer as accepted (if offers table is used)
-      try {
-        await tx`
-          UPDATE booking_offers
-          SET status = 'accepted', responded_at = NOW()
-          WHERE booking_id = ${bookingId}
-            AND helper_id = ${helperId}
-            AND status = 'pending'
-        `;
-        // Cancel other pending offers
-        await tx`
-          UPDATE booking_offers
-          SET status = 'cancelled'
-          WHERE booking_id = ${bookingId}
-            AND helper_id != ${helperId}
-            AND status = 'pending'
-        `;
-      } catch {
-        // booking_offers table may not exist in dev
-      }
+    // 1. Generate 4-digit OTP at this moment
+    const startCode = generateStartCode(); // 4 digits
+    const startCodeHash = hmacHash(startCode);
 
-      // 4. Generate OTP (4-digit start code)
-      const startCode = generateStartCode();
-      const startCodeHash = hmacHash(startCode);
+    // 2. Perform atomic conditional transition: SEARCHING -> ACCEPTED
+    const updated = await this.transitionOrder(
+      orderId,
+      ORDER_STATES.ACCEPTED,
+      helperId,
+      'helper',
+      {
+        helper_id: helperId,
+        start_code: startCodeHash,
+        start_code_attempts: 0,
+        assigned_at: new Date().toISOString(),
+      },
+      { helper_id: helperId, offer_id: offerId || helperOffer?.id }
+    );
 
-      // 5. Update booking atomically
-      const updated = await tx`
-        UPDATE bookings
-        SET status = 'accepted',
-            helper_id = ${helperId},
-            assigned_at = NOW(),
-            start_code = ${startCodeHash},
-            start_code_attempts = 0,
-            version = version + 1,
-            updated_at = NOW()
-        WHERE id = ${bookingId}
-          AND status = 'searching'
-        RETURNING *
-      `;
+    // 3. Mark winning offer as ACCEPTED, close all other offers
+    if (helperOffer) {
+      await bookingRepo.updateOfferStatus(helperOffer.id, 'ACCEPTED');
+    }
+    const cancelledHelpers = await bookingRepo.cancelOtherOffers(orderId, helperId);
 
-      if (updated.length === 0) {
-        throw new Error("Booking already accepted by another helper (race condition)");
-      }
+    // Store plaintext OTP securely for customer-only retrieval
+    bookingRepo.savePlaintextOtp(orderId, startCode);
 
-      // 6. Audit event
-      const eventId = uuidv7();
-      await tx`
-        INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role)
-        VALUES (${eventId}, ${bookingId}, 'helper_accepted', 'searching', 'accepted', ${helperId}, 'helper')
-      `;
+    // 4. Notify other helpers that order is taken
+    for (const otherHelperId of cancelledHelpers) {
+      await realtimeEvents.emitOrderTaken({
+        order_id: orderId,
+        helper_id: otherHelperId,
+        reason: 'already_taken',
+      });
+    }
 
-      // Return booking with plaintext OTP (for the API to decide who gets it)
-      const result = updated[0];
-      result._plaintext_otp = startCode; // transient, not stored
-      return result;
+    // 5. Emit order:accepted to user (with OTP, helper info, ETA)
+    const helper = await helperRepo.getHelper(helperId);
+    const userLat = order.address_snapshot?.lat || order.lat || 28.6139;
+    const userLng = order.address_snapshot?.lng || order.lng || 77.2090;
+    const helperLat = helper?.last_lat || 28.6139;
+    const helperLng = helper?.last_lng || 77.2090;
+    const distM = haversineMeters({ lat: userLat, lng: userLng }, { lat: helperLat, lng: helperLng });
+    const etaMin = Math.max(1, Math.round(((distM / 1000) * DISPATCH_CONFIG.ROAD_DETOUR_FACTOR / DISPATCH_CONFIG.SPEED_KMPH) * 60));
+
+    await realtimeEvents.emitOrderAccepted({
+      order_id: orderId,
+      customer_id: order.customer_id,
+      helper_info: {
+        id: helperId,
+        name: helper?.full_name || 'Helper',
+        phone: helper?.phone_e164,
+        rating: helper?.rating_avg || 4.9,
+      },
+      eta_minutes: etaMin,
+      helper_location: {
+        lat: helperLat,
+        lng: helperLng,
+      },
+      otp: startCode, // Sent ONLY to customer
+      sub_state: DERIVED_SUB_STATES.EN_ROUTE,
     });
+
+    const subState = await this.deriveSubState(updated, { lat: helperLat, lng: helperLng });
+    (updated as any).sub_state = subState;
+    (updated as any).booking = updated;
+    return { order: updated, booking: updated, plaintextOtp: startCode };
+    } finally {
+      this.acceptLocks.delete(orderId);
+    }
   }
 
-  /* ── START TRIP (accepted → on_the_way) ── */
-  async startTrip(bookingId: string, helperId: string): Promise<any> {
-    return sql.begin(async (tx) => {
-      const bookingRows = await tx`
-        SELECT * FROM bookings WHERE id = ${bookingId} FOR UPDATE
-      `;
-      const booking = bookingRows[0];
-      if (!booking) throw new Error("Booking not found");
-
-      // Idempotent: already on_the_way by this helper
-      if (booking.status === "on_the_way" && booking.helper_id === helperId) {
-        return booking;
-      }
-
-      if (booking.helper_id !== helperId) {
-        throw new Error("Only the assigned helper can start the trip");
-      }
-
-      this._validateTransition(booking.status, "on_the_way", "helper");
-
-      const updated = await tx`
-        UPDATE bookings
-        SET status = 'on_the_way',
-            started_at = NOW(),
-            version = version + 1,
-            updated_at = NOW()
-        WHERE id = ${bookingId}
-          AND status = 'accepted'
-          AND helper_id = ${helperId}
-        RETURNING *
-      `;
-
-      if (updated.length === 0) {
-        throw new Error("Failed to start trip — booking state changed concurrently");
-      }
-
-      const eventId = uuidv7();
-      await tx`
-        INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role)
-        VALUES (${eventId}, ${bookingId}, 'trip_started', 'accepted', 'on_the_way', ${helperId}, 'helper')
-      `;
-
-      return updated[0];
-    });
-  }
-
-  /* ── VERIFY OTP (on_the_way → completed) ── */
+  /* ── 3. VERIFY OTP (Atomic Verification: ACCEPTED -> CONFIRMED) ── */
   async verifyOtp(
-    bookingId: string,
-    helperId: string,
-    code: string,
-  ): Promise<{ booking: any; valid: boolean; attemptsLeft: number; locked: boolean }> {
-    return sql.begin(async (tx) => {
-      const bookingRows = await tx`
-        SELECT * FROM bookings WHERE id = ${bookingId} FOR UPDATE
-      `;
-      const booking = bookingRows[0];
-      if (!booking) throw new Error("Booking not found");
+    orderIdOrParams: string | { orderId?: string; bookingId?: string; helperId: string; otp?: string; code?: string },
+    helperIdArg?: string,
+    inputOtpArg?: string
+  ): Promise<{
+    order: any;
+    valid: boolean;
+    success: boolean;
+    status: string;
+    attemptsLeft: number;
+    remainingAttempts: number;
+    locked: boolean;
+    idempotent?: boolean;
+    message: string;
+  }> {
+    let orderId: string;
+    let helperId: string;
+    let inputOtp: string;
 
-      if (booking.helper_id !== helperId) {
-        throw new Error("Only the assigned helper can verify OTP");
-      }
+    if (typeof orderIdOrParams === 'object') {
+      orderId = (orderIdOrParams.orderId || orderIdOrParams.bookingId)!;
+      helperId = orderIdOrParams.helperId;
+      inputOtp = (orderIdOrParams.otp || orderIdOrParams.code)!;
+    } else {
+      orderId = orderIdOrParams;
+      helperId = helperIdArg!;
+      inputOtp = inputOtpArg!;
+    }
 
-      if (booking.status !== "on_the_way") {
-        throw new Error(`OTP verification only allowed in on_the_way status, current: ${booking.status}`);
-      }
+    const order = await bookingRepo.getBooking(orderId);
+    if (!order) throw new Error('Order not found');
 
-      // Check lockout
-      const attempts = booking.start_code_attempts || 0;
-      if (attempts >= MAX_OTP_ATTEMPTS) {
-        // Check if lockout period has passed
-        const lastAttemptEvent = await tx`
-          SELECT created_at FROM booking_events
-          WHERE booking_id = ${bookingId}
-            AND event_type = 'otp_attempt_failed'
-          ORDER BY created_at DESC
-          LIMIT 1
-        `;
-        if (lastAttemptEvent.length > 0) {
-          const lastAttemptTime = new Date(lastAttemptEvent[0].created_at).getTime();
-          if (Date.now() - lastAttemptTime < OTP_LOCKOUT_MS) {
-            return { booking, valid: false, attemptsLeft: 0, locked: true };
-          }
-          // Lockout expired, reset attempts
-          await tx`
-            UPDATE bookings SET start_code_attempts = 0 WHERE id = ${bookingId}
-          `;
+    const currentStatus = this.normalizeStatus(order.status);
+
+    // Idempotent: already CONFIRMED
+    if (currentStatus === ORDER_STATES.CONFIRMED || currentStatus === 'completed' || currentStatus === 'in_progress') {
+      return {
+        order,
+        valid: true,
+        success: true,
+        status: ORDER_STATES.CONFIRMED,
+        attemptsLeft: 0,
+        remainingAttempts: 0,
+        locked: false,
+        idempotent: true,
+        message: 'Order already confirmed',
+      };
+    }
+
+    // Only assigned helper can verify
+    if (order.helper_id !== helperId) {
+      throw new Error('Only the assigned helper can verify OTP');
+    }
+
+    if (currentStatus !== ORDER_STATES.ACCEPTED) {
+      throw new Error(`OTP verification is only allowed in ACCEPTED status, current: ${order.status}`);
+    }
+
+    // Check lockout: 5 wrong attempts = 5 minutes lockout
+    const attempts = order.start_code_attempts || 0;
+    if (attempts >= DISPATCH_CONFIG.OTP_MAX_ATTEMPTS) {
+      // Check last failed event timestamp
+      const events = await bookingRepo.getOrderEvents(orderId);
+      const lastFail = events.filter(e => e.to_state === 'OTP_FAILED').pop();
+      if (lastFail) {
+        const elapsedMs = Date.now() - new Date(lastFail.timestamp).getTime();
+        if (elapsedMs < DISPATCH_CONFIG.OTP_LOCKOUT_MS) {
+          const remainingMin = Math.ceil((DISPATCH_CONFIG.OTP_LOCKOUT_MS - elapsedMs) / 60000);
+          return {
+            order,
+            valid: false,
+            success: false,
+            status: order.status,
+            attemptsLeft: 0,
+            remainingAttempts: 0,
+            locked: true,
+            idempotent: false,
+            message: `Too many wrong attempts. Verification locked for ${remainingMin} minute(s).`,
+          };
         }
       }
+      // Lockout expired, reset attempts
+      await bookingRepo.updateBookingStatus(orderId, order.status, undefined, { start_code_attempts: 0 });
+    }
 
-      // Verify the code
-      const codeHash = hmacHash(code);
-      if (booking.start_code !== codeHash) {
-        // Wrong code
-        const newAttempts = (booking.start_code_attempts || 0) + 1;
-        await tx`
-          UPDATE bookings
-          SET start_code_attempts = ${newAttempts}, updated_at = NOW()
-          WHERE id = ${bookingId}
-        `;
+    // Constant-time comparison
+    const inputHash = hmacHash(inputOtp);
+    const storedHash = order.start_code;
+    let isValid = false;
 
-        const failEventId = uuidv7();
-        await tx`
-          INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role, payload)
-          VALUES (${failEventId}, ${bookingId}, 'otp_attempt_failed', 'on_the_way', 'on_the_way', ${helperId}, 'helper',
-            ${sql.json({ attempt: newAttempts })})
-        `;
+    if (storedHash) {
+      const a = Buffer.from(storedHash, 'utf8');
+      const b = Buffer.from(inputHash, 'utf8');
+      if (a.length === b.length) {
+        isValid = crypto.timingSafeEqual(a, b);
+      }
+    }
 
-        return {
-          booking,
-          valid: false,
-          attemptsLeft: Math.max(0, MAX_OTP_ATTEMPTS - newAttempts),
-          locked: newAttempts >= MAX_OTP_ATTEMPTS,
-        };
+    if (!isValid) {
+      const newAttempts = (order.start_code_attempts || 0) + 1;
+      const isNowLocked = newAttempts >= DISPATCH_CONFIG.OTP_MAX_ATTEMPTS;
+
+      await bookingRepo.updateBookingStatus(orderId, order.status, undefined, {
+        start_code_attempts: newAttempts,
+      });
+
+      await bookingRepo.appendOrderEvent(
+        orderId,
+        ORDER_STATES.ACCEPTED,
+        'OTP_FAILED',
+        `helper:${helperId}`,
+        { attempts: newAttempts, locked: isNowLocked }
+      );
+
+      // If locked, notify user
+      if (isNowLocked) {
+        await realtimeEvents.emit('order:otp_locked', {
+          order_id: orderId,
+          customer_id: order.customer_id,
+          locked_duration_minutes: 5,
+        });
       }
 
-      // ── Correct OTP → complete the order in ONE transaction ──
-      const updated = await tx`
-        UPDATE bookings
-        SET status = 'completed',
-            completed_at = NOW(),
-            start_code = NULL,
-            start_code_attempts = 0,
-            version = version + 1,
-            updated_at = NOW()
-        WHERE id = ${bookingId}
-          AND status = 'on_the_way'
-        RETURNING *
-      `;
+      const attemptsLeft = Math.max(0, DISPATCH_CONFIG.OTP_MAX_ATTEMPTS - newAttempts);
+      return {
+        order,
+        valid: false,
+        success: false,
+        status: order.status,
+        attemptsLeft,
+        remainingAttempts: attemptsLeft,
+        locked: isNowLocked,
+        idempotent: false,
+        message: isNowLocked ? 'Too many wrong attempts. Verification locked for 5 minutes.' : 'Incorrect OTP',
+      };
+    }
 
-      if (updated.length === 0) {
-        throw new Error("Failed to complete booking — state changed concurrently");
-      }
+    // ── Correct OTP: Atomically transition to CONFIRMED ──
+    const confirmedOrder = await this.transitionOrder(
+      orderId,
+      ORDER_STATES.CONFIRMED,
+      helperId,
+      'helper',
+      {
+        start_code: null, // clear hash
+        start_code_attempts: 0,
+        confirmed_at: new Date().toISOString(),
+      },
+      { verified_by: helperId }
+    );
 
-      // Audit
-      const eventId = uuidv7();
-      await tx`
-        INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role)
-        VALUES (${eventId}, ${bookingId}, 'otp_verified', 'on_the_way', 'completed', ${helperId}, 'helper')
-      `;
+    // Clear plaintext OTP
+    bookingRepo.clearPlaintextOtp(orderId);
 
-      return { booking: updated[0], valid: true, attemptsLeft: 0, locked: false };
+    // Clean up live locations as helper has arrived and confirmed
+    await this.cleanupOnComplete(orderId);
+
+    // Emit order:confirmed to BOTH user and helper
+    await realtimeEvents.emitOrderConfirmed({
+      order_id: orderId,
+      customer_id: order.customer_id,
+      helper_id: helperId,
+      confirmed_at: new Date().toISOString(),
+      status: 'CONFIRMED',
     });
+
+    return {
+      order: confirmedOrder,
+      valid: true,
+      success: true,
+      status: ORDER_STATES.CONFIRMED,
+      attemptsLeft: 0,
+      remainingAttempts: 0,
+      locked: false,
+      idempotent: false,
+      message: 'Order confirmed successfully',
+    };
   }
 
-  /* ── CANCEL ── */
+  /* ── 4. CANCEL HANDLING ── */
   async cancel(
-    bookingId: string,
+    orderId: string,
     actorId: string,
-    actorRole: "customer" | "helper" | "system",
-    reason?: string,
+    actorRole: 'customer' | 'helper' | 'system',
+    reason?: string
   ): Promise<any> {
-    return sql.begin(async (tx) => {
-      const bookingRows = await tx`
-        SELECT * FROM bookings WHERE id = ${bookingId} FOR UPDATE
-      `;
-      const booking = bookingRows[0];
-      if (!booking) throw new Error("Booking not found");
+    const order = await bookingRepo.getBooking(orderId);
+    if (!order) throw new Error('Order not found');
 
-      // Idempotent
-      if (booking.status === "cancelled") return booking;
+    const currentStatus = this.normalizeStatus(order.status);
 
-      // Validate actor
-      if (actorRole === "customer" && booking.customer_id !== actorId) {
-        throw new Error("Only the booking customer can cancel");
-      }
-      if (actorRole === "helper" && booking.helper_id !== actorId) {
-        throw new Error("Only the assigned helper can cancel");
-      }
+    // Idempotent
+    if (currentStatus === ORDER_STATES.CANCELLED) return order;
 
-      this._validateTransition(booking.status, "cancelled", actorRole);
-
-      // If helper cancels before OTP step (status = accepted):
-      // remove helper, OTP, live location and put back to searching
-      if (actorRole === "helper" && booking.status === "accepted") {
-        const updated = await tx`
-          UPDATE bookings
-          SET status = 'searching',
-              helper_id = NULL,
-              assigned_at = NULL,
-              start_code = NULL,
-              start_code_attempts = 0,
-              cancel_reason = NULL,
-              version = version + 1,
-              updated_at = NOW()
-          WHERE id = ${bookingId}
-          RETURNING *
-        `;
-
-        const eventId = uuidv7();
-        await tx`
-          INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role, payload)
-          VALUES (${eventId}, ${bookingId}, 'helper_released', 'accepted', 'searching', ${actorId}, 'helper',
-            ${sql.json({ reason: reason || "helper_cancelled" })})
-        `;
-
-        return updated[0];
-      }
-
-      // Otherwise: full cancel
-      const updated = await tx`
-        UPDATE bookings
-        SET status = 'cancelled',
-            cancelled_at = NOW(),
-            cancelled_by = ${actorId},
-            cancel_reason = ${reason || null},
-            start_code = NULL,
-            version = version + 1,
-            updated_at = NOW()
-        WHERE id = ${bookingId}
-        RETURNING *
-      `;
-
-      const eventId = uuidv7();
-      await tx`
-        INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role, payload)
-        VALUES (${eventId}, ${bookingId}, 'booking_cancelled', ${booking.status}, 'cancelled', ${actorId}, ${actorRole},
-          ${sql.json({ reason: reason || null })})
-      `;
-
-      return updated[0];
-    });
-  }
-
-  /* ── EXPIRE (searching → expired) ── */
-  async expire(bookingId: string): Promise<any> {
-    return sql.begin(async (tx) => {
-      const bookingRows = await tx`
-        SELECT * FROM bookings WHERE id = ${bookingId} FOR UPDATE
-      `;
-      const booking = bookingRows[0];
-      if (!booking) throw new Error("Booking not found");
-      if (booking.status === "expired") return booking; // idempotent
-      if (booking.status !== "searching") {
-        throw new Error(`Cannot expire booking in ${booking.status} status`);
-      }
-
-      const updated = await tx`
-        UPDATE bookings
-        SET status = 'expired',
-            version = version + 1,
-            updated_at = NOW()
-        WHERE id = ${bookingId}
-          AND status = 'searching'
-        RETURNING *
-      `;
-
-      const eventId = uuidv7();
-      await tx`
-        INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role)
-        VALUES (${eventId}, ${bookingId}, 'booking_expired', 'searching', 'expired', 'system', 'system')
-      `;
-
-      return updated[0];
-    });
-  }
-
-  /* ── EXPIRE STALE SEARCHING BOOKINGS ── */
-  async expireStaleSearching(timeoutMs: number = 120_000): Promise<number> {
-    const cutoff = new Date(Date.now() - timeoutMs);
-    const stale = await sql`
-      SELECT id FROM bookings
-      WHERE status = 'searching'
-        AND created_at < ${cutoff}
-    `;
-
-    let count = 0;
-    for (const row of stale) {
-      try {
-        await this.expire(row.id);
-        count++;
-      } catch {
-        // Already expired or status changed
-      }
+    // Validate actor
+    if (actorRole === 'customer' && order.customer_id !== actorId) {
+      throw new Error('Only the customer can cancel this order');
     }
-    return count;
-  }
-
-  /* ── QUERIES ── */
-
-  /** Active tracking order for user: accepted or on_the_way only */
-  async getActiveTrackingForUser(userId: string): Promise<any | null> {
-    const rows = await sql`
-      SELECT * FROM bookings
-      WHERE customer_id = ${userId}
-        AND status IN ('accepted', 'on_the_way')
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    return rows[0] || null;
-  }
-
-  /** Any active order for user (includes searching) */
-  async findActiveForUser(userId: string): Promise<any | null> {
-    const rows = await sql`
-      SELECT * FROM bookings
-      WHERE customer_id = ${userId}
-        AND status IN ('searching', 'accepted', 'on_the_way')
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    return rows[0] || null;
-  }
-
-  /** Active order for helper: accepted or on_the_way */
-  async getActiveForHelper(helperId: string): Promise<any | null> {
-    const rows = await sql`
-      SELECT * FROM bookings
-      WHERE helper_id = ${helperId}
-        AND status IN ('accepted', 'on_the_way')
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    return rows[0] || null;
-  }
-
-  /** Active list for user: searching, accepted, on_the_way */
-  async listActiveForUser(userId: string): Promise<any[]> {
-    return sql`
-      SELECT * FROM bookings
-      WHERE customer_id = ${userId}
-        AND status IN ('searching', 'accepted', 'on_the_way')
-      ORDER BY created_at DESC
-    `;
-  }
-
-  /** History list for user: completed, cancelled, expired — newest first */
-  async listHistoryForUser(userId: string, limit: number = 50): Promise<any[]> {
-    return sql`
-      SELECT * FROM bookings
-      WHERE customer_id = ${userId}
-        AND status IN ('completed', 'cancelled', 'expired')
-      ORDER BY created_at DESC
-      LIMIT ${limit}
-    `;
-  }
-
-  /** Active jobs for helper */
-  async listActiveForHelper(helperId: string): Promise<any[]> {
-    return sql`
-      SELECT * FROM bookings
-      WHERE helper_id = ${helperId}
-        AND status IN ('accepted', 'on_the_way')
-      ORDER BY created_at DESC
-    `;
-  }
-
-  /** History for helper */
-  async listHistoryForHelper(helperId: string, limit: number = 50): Promise<any[]> {
-    return sql`
-      SELECT * FROM bookings
-      WHERE helper_id = ${helperId}
-        AND status IN ('completed', 'cancelled', 'expired')
-      ORDER BY created_at DESC
-      LIMIT ${limit}
-    `;
-  }
-
-  /** Get a single booking */
-  async getBooking(id: string): Promise<any | null> {
-    const rows = await sql`SELECT * FROM bookings WHERE id = ${id}`;
-    return rows[0] || null;
-  }
-
-  /* ── CLEANUP (called on completion) ── */
-  async cleanupOnComplete(bookingId: string): Promise<void> {
-    await liveLocationRepo.deleteLiveLocation(bookingId);
-    await liveLocationRepo.deleteRoute(bookingId);
-  }
-
-  /* ── INTERNAL HELPERS ── */
-
-  private _validateTransition(
-    currentStatus: string,
-    nextStatus: string,
-    actorRole: string,
-  ): void {
-    const allowed = TRANSITIONS[currentStatus];
-    if (!allowed) {
-      throw new Error(`Unknown current status: ${currentStatus}`);
+    if (actorRole === 'helper' && order.helper_id !== actorId) {
+      throw new Error('Only the assigned helper can cancel this order');
     }
-    const roles = allowed[nextStatus];
-    if (!roles) {
-      throw new Error(
-        `Invalid transition: ${currentStatus} → ${nextStatus}`,
+
+    // User cancels during SEARCHING: cancel all live offers, notify helpers, set CANCELLED
+    if (currentStatus === ORDER_STATES.SEARCHING) {
+      const affectedHelpers = await bookingRepo.cancelAllOffersForOrder(orderId);
+      for (const hId of affectedHelpers) {
+        await realtimeEvents.emitOrderCancelled({
+          order_id: orderId,
+          cancelled_by: actorId,
+          cancelled_role: actorRole,
+          reason,
+          status: 'CANCELLED',
+        });
+      }
+
+      const cancelledOrder = await this.transitionOrder(
+        orderId,
+        ORDER_STATES.CANCELLED,
+        actorId,
+        actorRole,
+        {
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: actorId,
+          cancel_reason: reason || 'Customer cancelled',
+        }
       );
+
+      return cancelledOrder;
     }
-    if (!roles.includes(actorRole)) {
-      throw new Error(
-        `Actor '${actorRole}' cannot transition ${currentStatus} → ${nextStatus}. Allowed: ${roles.join(", ")}`,
+
+    // Helper cancels after ACCEPTED: free helper, add to order exclusion list, tell user "finding another helper", restart dispatch
+    if (actorRole === 'helper' && currentStatus === ORDER_STATES.ACCEPTED) {
+      bookingRepo.clearPlaintextOtp(orderId);
+
+      // Revert to SEARCHING for re-dispatch
+      const reverted = await this.transitionOrder(
+        orderId,
+        ORDER_STATES.SEARCHING,
+        actorId,
+        'system',
+        {
+          helper_id: null,
+          start_code: null,
+          start_code_attempts: 0,
+          dispatch_wave: 1,
+        },
+        { helper_released: actorId, reason }
       );
+
+      // Notify customer: finding another helper
+      await realtimeEvents.emitSearchingUpdate({
+        order_id: orderId,
+        customer_id: order.customer_id,
+        wave: 1,
+        radius_km: DISPATCH_CONFIG.RADIUS_STEPS_KM[0],
+      });
+
+      return { ...reverted, re_dispatched: true, excluded_helper: actorId };
     }
+
+    // Customer cancels after ACCEPTED
+    const cancelled = await this.transitionOrder(
+      orderId,
+      ORDER_STATES.CANCELLED,
+      actorId,
+      actorRole,
+      {
+        cancelled_at: new Date().toISOString(),
+        cancelled_by: actorId,
+        cancel_reason: reason || 'Cancelled by ' + actorRole,
+      }
+    );
+
+    await this.cleanupOnComplete(orderId);
+
+    // Notify the other party
+    await realtimeEvents.emitOrderCancelled({
+      order_id: orderId,
+      cancelled_by: actorId,
+      cancelled_role: actorRole,
+      reason,
+      status: 'CANCELLED',
+    });
+
+    return cancelled;
   }
 
-  private async _appendEvent(
-    bookingId: string,
-    eventType: string,
-    fromStatus: string | null,
-    toStatus: string,
-    actorId: string,
-    actorRole: string,
-    payload: any,
-  ): Promise<void> {
-    const id = uuidv7();
+  /* ── 5. NO_HELPER_FOUND ── */
+  async setNoHelperFound(orderId: string, reason?: string): Promise<any> {
+    const order = await bookingRepo.getBooking(orderId);
+    if (!order) throw new Error('Order not found');
+
+    const currentStatus = this.normalizeStatus(order.status);
+    if (currentStatus === ORDER_STATES.NO_HELPER_FOUND) return order;
+    if (currentStatus !== ORDER_STATES.SEARCHING) return order;
+
+    await bookingRepo.cancelAllOffersForOrder(orderId);
+
+    const updated = await this.transitionOrder(
+      orderId,
+      ORDER_STATES.NO_HELPER_FOUND,
+      'system',
+      'system',
+      { cancel_reason: reason || 'No helpers available' },
+      { reason }
+    );
+
+    await realtimeEvents.emitNoHelperFound({
+      order_id: orderId,
+      customer_id: order.customer_id,
+      reason: reason || 'No helpers available within maximum radius and ETA cap',
+      status: 'NO_HELPER_FOUND',
+    });
+
+    return updated;
+  }
+
+  /* ── 6. ACTIVE ORDER ENDPOINTS QUERY ── */
+
+  /**
+   * Return the active order with its full state for a user.
+   * If status is ACCEPTED, includes the OTP (sent only to customer client).
+   */
+  async getActiveOrderForUser(userId: string): Promise<any | null> {
+    const order = await bookingRepo.findActiveForUser(userId);
+    if (!order) return null;
+
+    const norm = this.normalizeStatus(order.status);
+    // Active states: SEARCHING, ACCEPTED, CONFIRMED (and in_progress)
+    if (![ORDER_STATES.SEARCHING, ORDER_STATES.ACCEPTED, ORDER_STATES.CONFIRMED, 'in_progress', 'on_the_way'].includes(norm)) {
+      return null;
+    }
+
+    const subState = await this.deriveSubState(order);
+    const plaintextOtp = norm === ORDER_STATES.ACCEPTED ? bookingRepo.getPlaintextOtp(order.id) : null;
+
+    let helperInfo: any = null;
+    if (order.helper_id) {
+      const helper = await helperRepo.getHelper(order.helper_id);
+      const live = await liveLocationRepo.getLiveLocation(order.id);
+      helperInfo = {
+        id: order.helper_id,
+        name: helper?.full_name || 'Helper',
+        phone: helper?.phone_e164,
+        lat: live?.lat || helper?.last_lat,
+        lng: live?.lng || helper?.last_lng,
+        rating: helper?.rating_avg || 4.9,
+      };
+    }
+
+    const { start_code, ...safeOrder } = order;
+    return {
+      ...safeOrder,
+      status: norm,
+      sub_state: subState,
+      otp: plaintextOtp, // only sent to user client
+      helper: helperInfo,
+      helper_name: helperInfo?.name,
+    };
+  }
+
+  /**
+   * Return the active order with its full state for a helper.
+   * NEVER returns OTP!
+   */
+  async getActiveOrderForHelper(helperId: string): Promise<any | null> {
+    const order = await bookingRepo.findActiveForHelper(helperId);
+    if (!order) return null;
+
+    const norm = this.normalizeStatus(order.status);
+    if (![ORDER_STATES.ACCEPTED, ORDER_STATES.CONFIRMED, 'in_progress', 'on_the_way'].includes(norm)) {
+      return null;
+    }
+
+    const subState = await this.deriveSubState(order);
+    const live = await liveLocationRepo.getLiveLocation(order.id);
+
+    const { start_code, ...safeOrder } = order;
+    return {
+      ...safeOrder,
+      status: norm,
+      sub_state: subState,
+      // OTP is NEVER included
+      live_location: live,
+    };
+  }
+
+  /* ── 7. SWEEPER: EXPIRE STALE SEARCHING ORDERS ON STARTUP / TICK ── */
+  async sweepStaleOrders(): Promise<{ expiredOffers: number; expiredOrders: number }> {
+    const expiredOffers = await bookingRepo.findExpiredOffers();
+    let expiredOfferCount = 0;
+    for (const off of expiredOffers) {
+      await bookingRepo.updateOfferStatus(off.id, 'EXPIRED');
+      await realtimeEvents.emitOrderOfferExpired({
+        order_id: off.order_id,
+        helper_id: off.helper_id,
+      });
+      expiredOfferCount++;
+    }
+
+    // Expire stale searching bookings older than MAX_SEARCH_SECONDS (120s)
+    const cutoff = new Date(Date.now() - DISPATCH_CONFIG.MAX_SEARCH_SECONDS * 1000);
+    let expiredOrderCount = 0;
+
+    // Check in-memory store
+    const g = globalThis as any;
+    const memBookings = (g.__swepyBookings as Map<string, any>) || new Map();
+    for (const b of memBookings.values()) {
+      if (this.normalizeStatus(b.status) === ORDER_STATES.SEARCHING) {
+        const created = new Date(b.created_at);
+        if (created < cutoff) {
+          await this.setNoHelperFound(b.id, 'Search timeout reached (120 seconds)');
+          expiredOrderCount++;
+        }
+      }
+    }
+
     try {
-      await sql`
-        INSERT INTO booking_events (id, booking_id, event_type, from_status, to_status, actor_user_id, actor_role, payload)
-        VALUES (${id}, ${bookingId}, ${eventType}, ${fromStatus}, ${toStatus}, ${actorId}, ${actorRole}, ${payload ? sql.json(payload) : null})
+      const rows = await sql`
+        SELECT id FROM bookings
+        WHERE status IN ('SEARCHING', 'searching')
+          AND created_at < ${cutoff}
       `;
+      for (const row of rows) {
+        await this.setNoHelperFound(row.id, 'Search timeout reached (120 seconds)');
+        expiredOrderCount++;
+      }
     } catch {
-      // booking_events table may not exist in dev — log and continue
-      console.warn(`[BookingService] Failed to write event ${eventType} for ${bookingId}`);
+      // DB offline
     }
+
+    return {
+      expiredOffers: expiredOfferCount,
+      expiredOrders: expiredOrderCount,
+      sweptOffersCount: expiredOfferCount,
+      sweptOrdersCount: expiredOrderCount,
+    };
+  }
+
+  async getCustomerActiveOrder(userId: string): Promise<any | null> {
+    return this.getActiveOrderForUser(userId);
+  }
+
+  async getHelperActiveOrder(helperId: string): Promise<any | null> {
+    return this.getActiveOrderForHelper(helperId);
+  }
+
+  /* ── Cleanup ── */
+  async cleanupOnComplete(orderId: string): Promise<void> {
+    await liveLocationRepo.deleteLiveLocation(orderId).catch(() => {});
+    await liveLocationRepo.deleteRoute(orderId).catch(() => {});
   }
 }
 
-/* ── Realtime push helper ── */
-/**
- * Push a realtime event to connected clients via the demo_messages table.
- * Both apps poll GET /api/messages to receive these.
- */
-export async function pushRealtimeEvent(payload: any): Promise<void> {
-  const id = uuidv7();
-  try {
-    await sql`
-      INSERT INTO demo_messages (id, payload)
-      VALUES (${id}, ${sql.json(payload)})
-    `;
-  } catch {
-    console.warn("[Realtime] Failed to push event:", payload);
-  }
-}
-
-/** Singleton */
 export const bookingService = new BookingService();

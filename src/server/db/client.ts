@@ -9,8 +9,7 @@
 import postgres from 'postgres';
 
 function getConnectionString(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error('DATABASE_URL is not set');
+  const url = process.env.DATABASE_URL || (process.env.NODE_ENV === 'test' || process.env.USE_IN_MEMORY_DB === 'true' ? 'postgres://postgres:postgres@localhost:5432/swepy_test' : 'postgres://postgres:postgres@localhost:5432/swepy');
   return url;
 }
 
@@ -22,6 +21,7 @@ function getMigrationConnectionString(): string {
 export const sql = postgres(getConnectionString(), {
   prepare: false,
   idle_timeout: 20,
+  connect_timeout: process.env.USE_IN_MEMORY_DB === 'true' || process.env.NODE_ENV === 'test' ? 1 : 5,
   max: 10,
   connection: {
     application_name: 'swepy-server',

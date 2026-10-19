@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
-import { bookingService, pushRealtimeEvent } from '@/server/services/booking.service';
+import { bookingService } from '@/server/services/booking.service';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -10,9 +10,13 @@ const schema = z.object({
 
 /**
  * POST /api/bookings/[id]/verify-otp — helper submits the 4-digit OTP.
- * Only valid in on_the_way. Wrong code = error + attempt count.
- * Lock after 5 wrong tries for 3 minutes.
- * Correct code = complete the order in ONE transaction.
+ * Requirements:
+ * - Constant-time comparison on server. Only assigned helper can verify.
+ * - Wrong OTP: return "Incorrect OTP" and count attempt.
+ * - After 5 wrong attempts: lock verification for 5 minutes and notify user.
+ * - Correct OTP: atomically set order to CONFIRMED, emit order:confirmed to BOTH.
+ * - Submitting same correct OTP again is idempotent.
+ * - Does NOT depend on distance or ARRIVED sub-state.
  */
 export async function POST(
   req: NextRequest,
@@ -27,32 +31,24 @@ export async function POST(
 
     if (result.locked) {
       return NextResponse.json(
-        { error: 'Too many failed attempts. Locked for 3 minutes.', attemptsLeft: 0, locked: true },
+        { error: 'Incorrect OTP', message: result.message, attemptsLeft: 0, locked: true },
         { status: 429 },
       );
     }
 
     if (!result.valid) {
       return NextResponse.json(
-        { error: 'Invalid OTP', attemptsLeft: result.attemptsLeft, locked: false },
+        { error: 'Incorrect OTP', message: 'Incorrect OTP', attemptsLeft: result.attemptsLeft, locked: false },
         { status: 400 },
       );
     }
 
-    // OTP correct — booking is now completed
-    // Clean up live location data
-    await bookingService.cleanupOnComplete(id);
-
-    // Push completed event to both apps
-    await pushRealtimeEvent({
-      type: 'job_status',
-      booking_id: id,
-      status: 'completed',
-      ts: Date.now(),
-      sender: helperId,
+    return NextResponse.json({
+      success: true,
+      status: 'CONFIRMED',
+      message: 'Order confirmed',
+      order: result.order,
     });
-
-    return NextResponse.json({ success: true, status: 'completed', booking: result.booking });
   } catch (err: any) {
     const status = err.message.includes('not found') ? 404
       : err.message.includes('Only the assigned') ? 403

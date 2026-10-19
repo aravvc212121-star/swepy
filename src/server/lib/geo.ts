@@ -85,3 +85,22 @@ export function fromGeoJSON(coord: [number, number]): LatLng {
 export function toGeoJSON(point: LatLng): [number, number] {
   return [point.lng, point.lat];
 }
+
+/**
+ * Canonical ETA estimate function: Haversine distance x 1.35 (road detour factor) divided by SPEED_KMPH (default 18).
+ * Kept behind this single function so a real road-routing provider can be swapped in later without touching dispatch logic.
+ */
+export function estimateEtaMinutes(
+  helperLocation: LatLng,
+  userLocation: LatLng,
+  speedKmph: number = 18,
+  detourFactor: number = 1.35,
+): number {
+  if (!isValidCoord(helperLocation.lat, helperLocation.lng) || !isValidCoord(userLocation.lat, userLocation.lng)) {
+    return 1;
+  }
+  const straightLineM = haversineMeters(helperLocation, userLocation);
+  const roadKm = (straightLineM / 1000) * detourFactor;
+  const hours = roadKm / speedKmph;
+  return Math.max(1, Math.round(hours * 60));
+}

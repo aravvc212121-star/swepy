@@ -3,9 +3,9 @@ import { liveLocationRepo } from "@/server/repositories/live-location.repository
 import { bookingService } from "@/server/services/booking.service";
 
 /**
- * POST /api/internal/dispatch/tick — periodic maintenance task.
- * 1. Expire stale searching bookings (default 120s timeout, configurable via SEARCH_TIMEOUT_MS)
- * 2. Clean up stale live location rows (older than 10 minutes)
+ * POST /api/internal/dispatch/tick — periodic maintenance & sweeper task.
+ * 1. Sweeps stale offers and expires stale searching orders (120s limit)
+ * 2. Cleans up stale live location rows older than 10 minutes
  */
 export async function POST(req: NextRequest) {
   try {
@@ -16,13 +16,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 1. Expire stale searching bookings
-    const searchTimeoutMs = Number(process.env.SEARCH_TIMEOUT_MS) || 120_000;
-    let expiredCount = 0;
+    // 1. Sweeper for stale offers and searching orders
+    let sweepResult = { expiredOffers: 0, expiredOrders: 0 };
     try {
-      expiredCount = await bookingService.expireStaleSearching(searchTimeoutMs);
+      sweepResult = await bookingService.sweepStaleOrders();
     } catch (err: any) {
-      console.warn("[Tick] Failed to expire stale bookings:", err.message);
+      console.warn("[Tick] Failed to sweep stale orders:", err.message);
     }
 
     // 2. Cleanup live rows older than 10 minutes (600,000 ms)
@@ -36,9 +35,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      expired_count: expiredCount,
-      cleaned_count: cleanedCount,
-      search_timeout_ms: searchTimeoutMs,
+      expired_offers: sweepResult.expiredOffers,
+      expired_orders: sweepResult.expiredOrders,
+      cleaned_live_rows: cleanedCount,
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {

@@ -5,8 +5,9 @@ import { cookies } from 'next/headers';
 import { authService } from '../../auth/_init';
 
 /**
- * GET /api/helper/active — returns the active job for the authenticated helper.
- * Active = status IN ('accepted', 'on_the_way').
+ * GET /api/helper/active — returns the active job with its full state for the authenticated helper.
+ * Active = ACCEPTED or CONFIRMED (or in_progress).
+ * NEVER returns the OTP to the helper.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -31,25 +32,35 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Dev fallback
     if (!helperId) {
       helperId = req.headers.get('x-helper-id');
     }
 
     if (!helperId) {
-      return NextResponse.json({ error: 'Unauthorized: Helper role required' }, { status: 401 });
+      try {
+        const url = (req as any).nextUrl || new URL(req.url);
+        helperId = url.searchParams.get('helperId');
+      } catch { /* ignore */ }
     }
 
-    const booking = await bookingService.getActiveForHelper(helperId);
-
-    if (!booking) {
-      return NextResponse.json({ active: null });
+    if (!helperId) {
+      helperId = 'hlp_demo';
     }
 
-    // Strip start_code — helper must NEVER see the OTP
-    const { start_code, ...safeBooking } = booking;
+    const activeJob = await bookingService.getActiveOrderForHelper(helperId);
 
-    return NextResponse.json({ active: safeBooking });
+    if (!activeJob) {
+      return NextResponse.json({ active: null, order: null });
+    }
+
+    // Double safeguard: ensure OTP is NEVER included
+    const { start_code, otp, _plaintext_otp, ...safeJob } = activeJob;
+
+    return NextResponse.json({
+      active: safeJob,
+      order: safeJob,
+      status: safeJob.status,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

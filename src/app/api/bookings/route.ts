@@ -1,31 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { BookingRepository } from '@/server/repositories/booking.repository';
-import { DispatchService } from '@/server/services/dispatch.service';
-import { HelperRepository } from '@/server/repositories/helper.repository';
-import type { RealtimeGateway } from '@/server/lib/interfaces';
-
-class NoopRealtime implements RealtimeGateway {
-  async publish(channel: string, event: string, payload: unknown) {
-    console.log(`[Realtime] ${channel} -> ${event}`, payload);
-  }
-}
-
-const bookingRepo = new BookingRepository();
-const helperRepo = new HelperRepository();
-const realtime = new NoopRealtime();
-const dispatchService = new DispatchService(bookingRepo, helperRepo, realtime);
+import { bookingService } from '@/server/services/booking.service';
+import { dispatchService } from '@/server/services/dispatch.service';
+import { cookies } from 'next/headers';
+import { authService } from '../auth/_init';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    // In production, validate user session here
 
-    const booking = await bookingRepo.createBooking(body);
-    
-    // Trigger dispatch asynchronously
-    // In production, this would go to a JobQueue
+    // Authenticate user if session cookie or header present
+    let customerId = body.customerId || body.customer_id;
+    if (!customerId) {
+      try {
+        const cookieStore = await cookies();
+        const token = cookieStore.get('swepy_session')?.value;
+        if (token) {
+          const user = await authService.validateSession(token);
+          if (user) customerId = user.id;
+        }
+      } catch { /* ignore */ }
+    }
+    if (!customerId) {
+      customerId = req.headers.get('x-user-id') || 'customer_demo';
+    }
+
+    const booking = await bookingService.createBooking({
+      ...body,
+      customerId,
+      lat: body.lat ?? (body.addressSnapshot?.lat ?? 28.6139),
+      lng: body.lng ?? (body.addressSnapshot?.lng ?? 77.2090),
+    });
+
+    // Start smart wave dispatch asynchronously
     setTimeout(() => {
-      dispatchService.dispatchWave(booking.id, body.lat || 0, body.lng || 0, body.cityId || 'city-1', 1).catch(console.error);
+      dispatchService.startDispatch(booking.id).catch(console.error);
     }, 0);
 
     return NextResponse.json({ success: true, booking });

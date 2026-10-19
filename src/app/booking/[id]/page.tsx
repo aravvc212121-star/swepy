@@ -41,25 +41,27 @@ const C = {
 } as const;
 
 /* ── Status helpers ── */
-type TrackingStatus = "searching" | "accepted" | "on_the_way" | "arrived" | "in_progress" | "completed" | "cancelled" | "expired";
+type TrackingStatus = "searching" | "accepted" | "confirmed" | "on_the_way" | "arrived" | "in_progress" | "completed" | "cancelled" | "expired" | "no_helper_found";
 
 const STEP_KEYS = ["booked", "onTheWay", "arrived", "done"] as const;
 
 function getStepStatuses(status: TrackingStatus): ("completed" | "active" | "upcoming")[] {
   switch (status) {
     case "searching":
+      return ["active", "upcoming", "upcoming", "upcoming"];
     case "accepted":
-      return ["completed", "active", "upcoming", "upcoming"];
     case "on_the_way":
       return ["completed", "active", "upcoming", "upcoming"];
     case "arrived":
       return ["completed", "completed", "active", "upcoming"];
+    case "confirmed":
     case "in_progress":
       return ["completed", "completed", "completed", "active"];
     case "completed":
       return ["completed", "completed", "completed", "completed"];
     case "cancelled":
     case "expired":
+    case "no_helper_found":
       return ["completed", "upcoming", "upcoming", "upcoming"];
     default:
       return ["completed", "active", "upcoming", "upcoming"];
@@ -72,11 +74,13 @@ function getHeadline(status: TrackingStatus, name: string, etaMin: number, t: (k
     case "accepted":
     case "on_the_way": return t("booking.arrivingIn", { name, eta: etaMin });
     case "arrived": return t("booking.hasArrived", { name });
+    case "confirmed": return "Order confirmed";
     case "in_progress": return t("booking.inProgress");
     case "completed": return "Order Done! 🎉";
     case "cancelled": return t("booking.cancelled");
-    case "expired": return "No helper found";
-    default: return t("booking.arrivingIn", { name, eta: etaMin });
+    case "expired":
+    case "no_helper_found": return "No helper found";
+    default: return "Order confirmed";
   }
 }
 
@@ -86,11 +90,13 @@ function getStatusLabel(status: TrackingStatus, t: (k: string) => string): strin
     case "accepted":
     case "on_the_way": return t("booking.onTheWay");
     case "arrived": return t("booking.arrived");
+    case "confirmed": return "Order confirmed";
     case "in_progress": return t("booking.inProgress");
     case "completed": return t("booking.completed");
     case "cancelled": return t("booking.cancelled");
-    case "expired": return "Expired";
-    default: return t("booking.onTheWay");
+    case "expired":
+    case "no_helper_found": return "No helper found";
+    default: return "Order confirmed";
   }
 }
 
@@ -338,8 +344,9 @@ export default function BookedPage() {
       return;
     }
 
-    // 2. Fallback to API if not present in local store
-    fetch(`/api/bookings/${bookingId}`)
+    // 2. Fetch from API (active order or specific booking ID)
+    const fetchUrl = (bookingId === "active" || !bookingId) ? "/api/bookings/active" : `/api/bookings/${bookingId}`;
+    fetch(fetchUrl)
         .then(res => res.json())
         .then(data => {
           if (data.success && data.booking) {
@@ -352,15 +359,15 @@ export default function BookedPage() {
               home_size: dbBooking.home_size || 'Home',
               address_short: 'Address',
               address_full: 'Full Address',
-              lat: 28.6139,
-              lng: 77.2090,
-              price: dbBooking.price_paise / 100,
-              otp: dbBooking.start_code || '4821',
+              lat: dbBooking.user_lat || 28.6139,
+              lng: dbBooking.user_lng || 77.2090,
+              price: (dbBooking.price_paise || 29900) / 100,
+              otp: dbBooking.otp || dbBooking.start_code || '4821',
               status: dbBooking.status,
               helper_id: dbBooking.helper_id,
-              helper_name: dbBooking.helper_id ? 'Helper' : null,
-              helper_lat: 28.6069,
-              helper_lng: 77.2030,
+              helper_name: dbBooking.helper_name || (dbBooking.helper_id ? 'Helper' : null),
+              helper_lat: dbBooking.helper_lat || 28.6069,
+              helper_lng: dbBooking.helper_lng || 77.2030,
               radius_step: dbBooking.dispatch_wave,
               rating: null,
               created_at: dbBooking.created_at,
@@ -377,6 +384,39 @@ export default function BookedPage() {
                 stale: false,
               });
             }
+          } else if (bookingId !== "active") {
+            // Also try active endpoint as fallback
+            fetch("/api/bookings/active")
+              .then(r => r.json())
+              .then(d => {
+                if (d.success && d.booking) {
+                  const dbB = d.booking;
+                  const mapped: SwepyBooking = {
+                    id: dbB.id,
+                    user_id: dbB.customer_id,
+                    user_name: 'Customer',
+                    service_name: dbB.service_code || 'Service',
+                    home_size: dbB.home_size || 'Home',
+                    address_short: 'Address',
+                    address_full: 'Full Address',
+                    lat: dbB.user_lat || 28.6139,
+                    lng: dbB.user_lng || 77.2090,
+                    price: (dbB.price_paise || 29900) / 100,
+                    otp: dbB.otp || dbB.start_code || '4821',
+                    status: dbB.status,
+                    helper_id: dbB.helper_id,
+                    helper_name: dbB.helper_name || (dbB.helper_id ? 'Helper' : null),
+                    helper_lat: dbB.helper_lat || 28.6069,
+                    helper_lng: dbB.helper_lng || 77.2030,
+                    radius_step: dbB.dispatch_wave,
+                    rating: null,
+                    created_at: dbB.created_at,
+                    updated_at: dbB.updated_at || dbB.created_at,
+                  };
+                  setBooking(mapped);
+                  setStatus(dbB.status as TrackingStatus);
+                }
+              }).catch(() => {});
           }
         })
         .catch(console.error);
@@ -452,6 +492,48 @@ export default function BookedPage() {
         setEtaMin(Math.max(1, Math.round(computeEta(dist))));
       }
 
+      // Realtime event contract: order:confirmed
+      if (event.type === "order:confirmed" || (event as any).event === "order:confirmed") {
+        const evt = event as any;
+        const targetId = evt.order_id || evt.booking_id;
+        if (!bookingId || bookingId === "active" || !targetId || targetId === bookingId) {
+          setStatus("confirmed");
+          setBooking(prev => prev ? { ...prev, status: "confirmed" as any } : prev);
+          if (bookingId) store.updateBooking(bookingId, { status: "confirmed" as any });
+        }
+      }
+
+      // Realtime event contract: order:cancelled
+      if (event.type === "order:cancelled" || (event as any).event === "order:cancelled") {
+        const evt = event as any;
+        const targetId = evt.order_id || evt.booking_id;
+        if (!bookingId || bookingId === "active" || !targetId || targetId === bookingId) {
+          setStatus("cancelled");
+          setBooking(prev => prev ? { ...prev, status: "cancelled" as any } : prev);
+        }
+      }
+
+      // Realtime event contract: location:update
+      if (event.type === "location:update" || (event as any).event === "location:update") {
+        const evt = event as any;
+        const targetId = evt.order_id || evt.booking_id;
+        if (!bookingId || bookingId === "active" || !targetId || targetId === bookingId) {
+          if (evt.lat && evt.lng) {
+            setBooking(prev => prev ? { ...prev, helper_lat: evt.lat, helper_lng: evt.lng } : prev);
+            setHelperLivePosition({
+              lat: evt.lat,
+              lng: evt.lng,
+              stale: false,
+            });
+            setIsLocating(false);
+            setLastUpdatedSec(1);
+            if (evt.eta_minutes !== undefined) {
+              setEtaMin(evt.eta_minutes);
+            }
+          }
+        }
+      }
+
       // Job status changes from helper
       if (event.type === "job_status" && event.booking_id === bookingId) {
         const newStatus = event.status as TrackingStatus;
@@ -461,23 +543,36 @@ export default function BookedPage() {
         store.updateBooking(bookingId, { status: newStatus as any });
       }
 
-      // Helper assigned or accepted
-      if ((event.type === "booking_assigned" || event.type === "booking_accept") && event.booking_id === bookingId) {
+      // Helper assigned or accepted (both booking_accept and order:accepted contract)
+      if (
+        event.type === "order:accepted" ||
+        (event as any).event === "order:accepted" ||
+        ((event.type === "booking_assigned" || event.type === "booking_accept") && event.booking_id === bookingId)
+      ) {
         if (statusRef.current === "completed") return;
+        const evt = event as any;
         setStatus("accepted");
-        const lat = ("lat" in event && typeof event.lat === "number") ? event.lat : undefined;
-        const lng = ("lng" in event && typeof event.lng === "number") ? event.lng : undefined;
+        const lat = evt.helper_location?.lat ?? evt.lat;
+        const lng = evt.helper_location?.lng ?? evt.lng;
+        const helperName = evt.helper?.name ?? evt.helper_name ?? "Helper";
+        const helperId = evt.helper?.id ?? evt.helper_id;
+        const otp = evt.otp;
+
         setBooking(prev => {
           if (!prev) return null;
           return {
             ...prev,
             status: "accepted",
-            helper_id: event.helper_id,
-            helper_name: event.helper_name,
+            helper_id: helperId || prev.helper_id,
+            helper_name: helperName || prev.helper_name,
             helper_lat: lat ?? prev.helper_lat,
             helper_lng: lng ?? prev.helper_lng,
+            ...(otp ? { otp } : {}),
           };
         });
+        if (evt.eta_minutes !== undefined) {
+          setEtaMin(evt.eta_minutes);
+        }
         if (lat && lng) {
           setHelperLivePosition({ lat, lng, stale: false });
           setIsLocating(false);
@@ -486,16 +581,19 @@ export default function BookedPage() {
             if (prev) {
               const dist = haversine({ lat: prev.lat, lng: prev.lng }, { lat, lng });
               setDistance(dist);
-              setEtaMin(Math.max(1, Math.round(computeEta(dist))));
+              if (evt.eta_minutes === undefined) {
+                setEtaMin(Math.max(1, Math.round(computeEta(dist))));
+              }
             }
             return prev;
           });
         }
         store.updateBooking(bookingId, {
           status: "accepted",
-          helper_id: event.helper_id,
-          helper_name: event.helper_name,
+          helper_id: helperId,
+          helper_name: helperName,
           ...(lat && lng ? { helper_lat: lat, helper_lng: lng } : {}),
+          ...(otp ? { otp } : {}),
         });
       }
     });
@@ -564,9 +662,9 @@ export default function BookedPage() {
           <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: "var(--surface)" }}>
             <span className="text-[28px]">📋</span>
           </div>
-          <h2 className="text-[18px] font-medium text-ink mb-2">No active booking</h2>
+          <h2 className="text-[18px] font-medium text-ink mb-2">No order</h2>
           <p className="text-[14px] text-ink-muted text-center mb-6">
-            You don&apos;t have any active booking right now. Book a helper from the home screen.
+            You don&apos;t have any active order right now. Book a helper from the home screen.
           </p>
           <Link
             href="/"
@@ -596,7 +694,7 @@ export default function BookedPage() {
   const helperName = booking.helper_name || "Helper";
   const helperInitial = helperName.charAt(0).toUpperCase();
   const otpDigits = (booking.otp || "4821").slice(0, 4).padEnd(4, "0").split("");
-  const showOtp = status === "on_the_way" || status === "accepted" || status === "arrived";
+  const showOtp = (status === "on_the_way" || status === "accepted" || status === "arrived") && status !== "confirmed";
   const otpVerified = status === "in_progress" || status === "completed";
   const showHelper = status !== "searching" && status !== "cancelled" && status !== "expired" && booking.helper_name;
   const showMap = status !== "completed" && status !== "cancelled" && status !== "expired";
@@ -822,58 +920,71 @@ export default function BookedPage() {
               </div>
             )}
 
-            {/* d. OTP card */}
-            {(showOtp || otpVerified) && (
+            {/* Order confirmed banner */}
+            {status === "confirmed" && (
+              <div
+                className="rounded-[16px] p-5 text-center shadow-sm animate-fade-in my-1"
+                style={{
+                  backgroundColor: "rgba(45, 106, 79, 0.08)",
+                  border: `1.5px solid ${C.success}`,
+                }}
+              >
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2"
+                  style={{ backgroundColor: C.success, color: "#fff" }}
+                >
+                  <IconCheck size={24} strokeWidth={3} />
+                </div>
+                <h2 className="text-[18px] font-bold tracking-tight mb-1" style={{ color: C.ink }}>
+                  Order confirmed
+                </h2>
+                <p className="text-[13px] leading-relaxed" style={{ color: C.secondary }}>
+                  Start code verified! {helperName} has confirmed your order.
+                </p>
+              </div>
+            )}
+
+            {/* d. OTP card (cleared once confirmed) */}
+            {showOtp && (
               <div className="rounded-[16px] p-4" style={{ backgroundColor: C.cardFill, border: `1px solid ${C.hairline}` }}>
-                {otpVerified ? (
-                  <div className="flex items-center gap-3 justify-center py-2">
-                    <div className="w-10 h-10 rounded-[12px] flex items-center justify-center" style={{ backgroundColor: C.brandTint }}>
-                      <IconShieldCheck size={20} style={{ color: C.success }} />
-                    </div>
-                    <span className="text-[14px] font-medium" style={{ color: C.success }}>{t("booking.codeVerified")}</span>
+                {status === "arrived" && (
+                  <div className="mb-3.5 p-3 rounded-[12px] flex items-center gap-2.5" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FCD34D" }}>
+                    <span className="text-[20px] shrink-0">🔔</span>
+                    <p className="text-[13px] font-medium leading-snug" style={{ color: "#92400E" }}>
+                      {helperName} has arrived at your door! Share your 4-digit code below to start.
+                    </p>
                   </div>
-                ) : (
-                  <>
-                    {status === "arrived" && (
-                      <div className="mb-3.5 p-3 rounded-[12px] flex items-center gap-2.5" style={{ backgroundColor: "#FEF3C7", border: "1px solid #FCD34D" }}>
-                        <span className="text-[20px] shrink-0">🔔</span>
-                        <p className="text-[13px] font-medium leading-snug" style={{ color: "#92400E" }}>
-                          {helperName} has arrived at your door! Share your 4-digit code below to start.
-                        </p>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-8 h-8 rounded-[12px] flex items-center justify-center" style={{ backgroundColor: C.brandTint }}>
-                        <IconShieldCheck size={18} style={{ color: C.brand }} />
-                      </div>
-                      <div>
-                        <p className="text-[14px] font-medium" style={{ color: C.ink }}>{t("booking.yourStartCode")}</p>
-                        <p className="text-[12px]" style={{ color: C.secondary }}>
-                          {t("booking.shareOtp", { name: helperName })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-center gap-3 my-2">
-                      {otpDigits.map((digit, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-center rounded-[14px] shadow-xs select-all"
-                          style={{
-                            width: "56px",
-                            height: "64px",
-                            backgroundColor: C.white,
-                            border: `2px solid ${C.hairline}`,
-                            fontSize: 26,
-                            fontWeight: 700,
-                            color: C.ink,
-                          }}
-                        >
-                          {digit}
-                        </div>
-                      ))}
-                    </div>
-                  </>
                 )}
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-[12px] flex items-center justify-center" style={{ backgroundColor: C.brandTint }}>
+                    <IconShieldCheck size={18} style={{ color: C.brand }} />
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-medium" style={{ color: C.ink }}>{t("booking.yourStartCode")}</p>
+                    <p className="text-[12px]" style={{ color: C.secondary }}>
+                      {t("booking.shareOtp", { name: helperName })}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-center gap-3 my-2">
+                  {otpDigits.map((digit, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-center rounded-[14px] shadow-xs select-all"
+                      style={{
+                        width: "56px",
+                        height: "64px",
+                        backgroundColor: C.white,
+                        border: `2px solid ${C.hairline}`,
+                        fontSize: 26,
+                        fontWeight: 700,
+                        color: C.ink,
+                      }}
+                    >
+                      {digit}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
