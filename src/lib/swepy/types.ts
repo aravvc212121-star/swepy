@@ -37,7 +37,7 @@ export interface Booking {
   lat: number;
   lng: number;
   price: number;
-  otp: string;
+  otp?: string;
   status: BookingStatus;
   helper_id: string | null;
   helper_name: string | null;

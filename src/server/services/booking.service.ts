@@ -254,15 +254,15 @@ export class BookingService {
       const actId = orderIdOrParams.actor || orderIdOrParams.actorId || orderIdOrParams.helperId || 'system';
       const actRole = orderIdOrParams.actorRole || (orderIdOrParams.helperId ? 'helper' : 'system');
       const patch = orderIdOrParams.helperId ? { helper_id: orderIdOrParams.helperId } : {};
-      return this.transitionOrder(orderId, targetState, actId, actRole, patch);
+      return this.transitionOrder(orderId, targetState, actId, actRole as any, patch);
     }
-    return this.transitionOrder(orderIdOrParams, toStatusArg!, actorIdArg!, actorRoleArg!, patchArg, metadataArg);
+    return this.transitionOrder(orderIdOrParams, toStatusArg!, actorIdArg!, actorRoleArg! as any, patchArg, metadataArg);
   }
 
   private acceptLocks = new Set<string>();
 
   /* ── 2. ACCEPT (Atomic Helper Accept) ── */
-  async accept(orderId: string, helperId: string, offerId?: string): Promise<{ order: any; plaintextOtp: string }> {
+  async accept(orderId: string, helperId: string, offerId?: string): Promise<{ order: any; booking?: any; plaintextOtp: string }> {
     while (this.acceptLocks.has(orderId)) {
       await new Promise(r => setTimeout(r, 20));
     }
@@ -761,7 +761,7 @@ export class BookingService {
   }
 
   /* ── 7. SWEEPER: EXPIRE STALE SEARCHING ORDERS ON STARTUP / TICK ── */
-  async sweepStaleOrders(): Promise<{ expiredOffers: number; expiredOrders: number }> {
+  async sweepStaleOrders(): Promise<{ expiredOffers: number; expiredOrders: number; sweptOffersCount?: number; sweptOrdersCount?: number }> {
     const expiredOffers = await bookingRepo.findExpiredOffers();
     let expiredOfferCount = 0;
     for (const off of expiredOffers) {
@@ -820,10 +820,77 @@ export class BookingService {
     return this.getActiveOrderForHelper(helperId);
   }
 
+  /* ── Legacy / compatibility endpoints ── */
+  async startTrip(bookingId: string, helperId: string): Promise<any> {
+    const order = await bookingRepo.getBooking(bookingId);
+    if (!order) throw new Error('Booking not found');
+    if (order.helper_id && order.helper_id !== helperId) {
+      throw new Error('Only the assigned helper can start the trip');
+    }
+    return order;
+  }
+
+  async listHistoryForUser(userId: string, limit: number = 50): Promise<any[]> {
+    if (process.env.USE_IN_MEMORY_DB !== 'true') {
+      try {
+        return await sql`
+          SELECT * FROM bookings
+          WHERE customer_id = ${userId}
+            AND status IN ('completed', 'cancelled', 'expired', 'CONFIRMED', 'NO_HELPER_FOUND')
+          ORDER BY created_at DESC
+          LIMIT ${limit}
+        `;
+      } catch {}
+    }
+    const g = globalThis as any;
+    const mem = (g.__swepyBookings as Map<string, any>) || new Map();
+    return Array.from(mem.values())
+      .filter((b: any) => b.customer_id === userId)
+      .slice(0, limit);
+  }
+
+  async listHistoryForHelper(helperId: string, limit: number = 50): Promise<any[]> {
+    if (process.env.USE_IN_MEMORY_DB !== 'true') {
+      try {
+        return await sql`
+          SELECT * FROM bookings
+          WHERE helper_id = ${helperId}
+            AND status IN ('completed', 'cancelled', 'expired', 'CONFIRMED', 'NO_HELPER_FOUND')
+          ORDER BY created_at DESC
+          LIMIT ${limit}
+        `;
+      } catch {}
+    }
+    const g = globalThis as any;
+    const mem = (g.__swepyBookings as Map<string, any>) || new Map();
+    return Array.from(mem.values())
+      .filter((b: any) => b.helper_id === helperId)
+      .slice(0, limit);
+  }
+
   /* ── Cleanup ── */
   async cleanupOnComplete(orderId: string): Promise<void> {
     await liveLocationRepo.deleteLiveLocation(orderId).catch(() => {});
     await liveLocationRepo.deleteRoute(orderId).catch(() => {});
+  }
+}
+
+/* ── Realtime push helper ── */
+/**
+ * Push a realtime event to connected clients via the demo_messages table.
+ * Both apps poll GET /api/messages to receive these.
+ */
+export async function pushRealtimeEvent(payload: any): Promise<void> {
+  const id = uuidv7();
+  if (process.env.USE_IN_MEMORY_DB !== 'true') {
+    try {
+      await sql`
+        INSERT INTO demo_messages (id, payload)
+        VALUES (${id}, ${sql.json(payload)})
+      `;
+    } catch {
+      console.warn("[Realtime] Failed to push event:", payload);
+    }
   }
 }
 

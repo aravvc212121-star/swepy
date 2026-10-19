@@ -492,8 +492,10 @@ export default function BookedPage() {
         setEtaMin(Math.max(1, Math.round(computeEta(dist))));
       }
 
+      const evtType = (event as any).type || (event as any).event;
+
       // Realtime event contract: order:confirmed
-      if (event.type === "order:confirmed" || (event as any).event === "order:confirmed") {
+      if (evtType === "order:confirmed") {
         const evt = event as any;
         const targetId = evt.order_id || evt.booking_id;
         if (!bookingId || bookingId === "active" || !targetId || targetId === bookingId) {
@@ -504,7 +506,7 @@ export default function BookedPage() {
       }
 
       // Realtime event contract: order:cancelled
-      if (event.type === "order:cancelled" || (event as any).event === "order:cancelled") {
+      if (evtType === "order:cancelled") {
         const evt = event as any;
         const targetId = evt.order_id || evt.booking_id;
         if (!bookingId || bookingId === "active" || !targetId || targetId === bookingId) {
@@ -514,7 +516,7 @@ export default function BookedPage() {
       }
 
       // Realtime event contract: location:update
-      if (event.type === "location:update" || (event as any).event === "location:update") {
+      if (evtType === "location:update") {
         const evt = event as any;
         const targetId = evt.order_id || evt.booking_id;
         if (!bookingId || bookingId === "active" || !targetId || targetId === bookingId) {
@@ -545,9 +547,8 @@ export default function BookedPage() {
 
       // Helper assigned or accepted (both booking_accept and order:accepted contract)
       if (
-        event.type === "order:accepted" ||
-        (event as any).event === "order:accepted" ||
-        ((event.type === "booking_assigned" || event.type === "booking_accept") && event.booking_id === bookingId)
+        evtType === "order:accepted" ||
+        ((evtType === "booking_assigned" || evtType === "booking_accept") && (event as any).booking_id === bookingId)
       ) {
         if (statusRef.current === "completed") return;
         const evt = event as any;
@@ -694,7 +695,7 @@ export default function BookedPage() {
   const helperName = booking.helper_name || "Helper";
   const helperInitial = helperName.charAt(0).toUpperCase();
   const otpDigits = (booking.otp || "4821").slice(0, 4).padEnd(4, "0").split("");
-  const showOtp = (status === "on_the_way" || status === "accepted" || status === "arrived") && status !== "confirmed";
+  const showOtp = ((status as string) === "on_the_way" || (status as string) === "accepted" || (status as string) === "arrived") && (status as string) !== "confirmed";
   const otpVerified = status === "in_progress" || status === "completed";
   const showHelper = status !== "searching" && status !== "cancelled" && status !== "expired" && booking.helper_name;
   const showMap = status !== "completed" && status !== "cancelled" && status !== "expired";

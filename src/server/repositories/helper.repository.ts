@@ -35,7 +35,7 @@ export class HelperRepository {
           SELECT h.*, u.full_name, u.phone_e164
           FROM helpers h
           JOIN users u ON h.user_id = u.id
-          WHERE (${cityId ?? null}::text IS NULL OR h.city_id = ${cityId})
+          WHERE (${cityId ?? null}::text IS NULL OR h.city_id = ${cityId ?? null})
             AND h.is_online = TRUE
             AND h.status = 'active'
         `;

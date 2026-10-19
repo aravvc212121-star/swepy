@@ -186,7 +186,7 @@ export class RealtimeEventManager {
     });
   }
 
-  async emitOrderTaken(payload: { order_id: string; helper_id: string }): Promise<void> {
+  async emitOrderTaken(payload: { order_id: string; helper_id: string; reason?: string }): Promise<void> {
     await this.emit('order:taken', {
       ...payload,
       recipient_id: payload.helper_id,

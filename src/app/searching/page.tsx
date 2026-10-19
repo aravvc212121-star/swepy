@@ -86,11 +86,12 @@ export default function SearchingPage() {
   useEffect(() => {
     if (!ready || !session) return;
     const active = store.getActiveBookingForUser(session.user_id);
-    if (active && (active.status === "searching" || active.status === "SEARCHING")) {
+    const activeStatus = (active?.status as string || "").toLowerCase();
+    if (active && activeStatus === "searching") {
       // Already searching, resume
       setBookingId(active.id);
       bookingRef.current = active;
-    } else if (active && active.status !== "searching" && active.status !== "SEARCHING") {
+    } else if (active && activeStatus !== "searching") {
       // Already has a helper assigned — jump straight to tracking
       router.replace(`/booking/${active.id}`);
       return;
@@ -138,7 +139,8 @@ export default function SearchingPage() {
       }
 
       // No helper found notification
-      if (event.type === "order:no_helper_found" || (event as any).event === "order:no_helper_found") {
+      const evtType = (event as any).type || (event as any).event;
+      if (evtType === "order:no_helper_found") {
         if (searchTimerRef.current) {
           clearInterval(searchTimerRef.current);
           searchTimerRef.current = null;
@@ -150,9 +152,8 @@ export default function SearchingPage() {
 
       // Helper accepted our booking -> navigate immediately to tracking with OTP
       if (
-        event.type === "booking_accept" ||
-        event.type === "order:accepted" ||
-        (event as any).event === "order:accepted"
+        evtType === "booking_accept" ||
+        evtType === "order:accepted"
       ) {
         const evt = event as any;
         const b = bookingRef.current || (bookingId ? store.getBooking(bookingId) : null) || store.getBooking(evt.booking_id || evt.order_id);
